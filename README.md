@@ -25,7 +25,7 @@ Yellow: Star secrets, SSL pyramid triggers
 Orange: Unclaimed Monty Moles
 
 ## Skip Popups
-Skips certain popups to make the flow of the game better for an Archipelago.
+Skips certain popups to make the flow of the game better for an Archipelago.<br>
 Recommended to use a patch to disable the star spawn cutscene.
 
 Also removes the need to be near Bowser to make him explode after a fight.
