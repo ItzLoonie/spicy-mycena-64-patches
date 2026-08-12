@@ -17,7 +17,7 @@ This patch disables Game Overs. (shocker, I know)
 This patch makes collecting coins and star secrets easier when flying with the Wing Cap or when being fired from a Cannon.
 
 ## Key HUD
-This patch adds a Key Counter and an overlay indicating what keys you have.<be>
+This patch adds a Key Counter and an overlay indicating what keys you have.\
 Due to limitations, the letter K is used to indicate keys.
 
 ## Let Me Cheat
