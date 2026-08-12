@@ -2,7 +2,12 @@
 
 ## Area Randomizer Spoilers
 This patch tells you where to find a specific course.\
-For example: "BOB-OMB BATTLEFIELD (TTM)" means Bob-omb Battlefield can be found at the Tall, Tall Mountain entrance.
+> [!TIP]
+> Below are some examples on formatting.\
+> "BOB-OMB BATTLEFIELD (HMC)" - Bob-omb Battlefield is found at the Hazy Maze Cave entrance.\
+> "BOWSER IN THE FIRE SEA (WDW M)" - Bowser in the Fire Sea is found at the middle of the Wet-Dry World entrance.\
+> "TINY-HUGE ISLAND (BOB, TTC 9)" - Both variants of Tiny Huge Island are found at the Bob-omb Battlefield entrance and Tick Tock Tock at the 9th hour.\
+> "JOLLY ROGER BAY (JRB)" - Jolly Roger Bay is found at its original entrance.
 
 ## Bowser Hits
 This patch just tells you how many hits Bowser takes in the Level Items screen.
