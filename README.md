@@ -10,6 +10,9 @@ This patch just tells you how many hits Bowser takes in the Level Items screen.
 ## Disable Game Over
 This patch disables Game Overs. (shocker, I know)
 
+> [!WARNING]
+> This patch will be deprecated for Spicy Mycena 64 v0.3.0, as lives will be disabled entirely.
+
 ## Easy Airborne Coins
 This patch makes collecting coins and star secrets easier when flying with the Wing Cap or when being fired from a Cannon.
 
@@ -23,8 +26,15 @@ This patch disables the cheat detection for Koopa the Quick and the Big Penguin,
 ## Move Randomizer Overlay
 This patch adds an overlay on the left side of your screen that tells you what moves you currently have access to in the current course.
 
+> [!WARNING]
+> This patch may temporarily break in Spicy Mycena 64 v0.3.0.\
+> If this happens, just wait for a fix as it's likely related to changes to the Lives Counter code.
+
 ## Random Instruments
 This patch adds three new Sound options which allows you to toggle whether or not instruments are random for music, jingles and sound effects.
+
+> [!WARNING]
+> This patch will be deprecated when Spicy Mycena 64 receives Archipelago options for randomized instruments.
 
 ## Secret Sparkles
 This patch adds a sparkle effect to various hidden triggers, and unclaimed Monty Moles.
