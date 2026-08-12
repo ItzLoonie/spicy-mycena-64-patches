@@ -13,8 +13,18 @@ This patch disables Game Overs. (shocker, I know)
 ## Easy Airborne Coins
 This patch makes collecting coins and star secrets easier when flying with the Wing Cap or when being fired from a Cannon.
 
+## Key HUD
+This patch adds a Key Counter and an overlay indicating what keys you have.<be>
+Due to limitations, the letter K is used to indicate keys.
+
+## Let Me Cheat
+This patch disables the cheat detection for Koopa the Quick and the Big Penguin, allowing you to use cannons and take the secret tunnel.
+
 ## Move Randomizer Overlay
 This patch adds an overlay on the left side of your screen that tells you what moves you currently have access to in the current course.
+
+## Random Instruments
+This patch adds three new Sound options which allows you to toggle whether or not instruments are random for music, jingles and sound effects.
 
 ## Secret Sparkles
 This patch adds a sparkle effect to various hidden triggers, and unclaimed Monty Moles.
