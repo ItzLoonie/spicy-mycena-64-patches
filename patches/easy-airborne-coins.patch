@@ -1,0 +1,67 @@
+diff --git a/src/game/object_collision.c b/src/game/object_collision.c
+index 71f3268b..23e6c2fa 100644
+--- a/src/game/object_collision.c
++++ b/src/game/object_collision.c
+@@ -1,12 +1,53 @@
+ #include <PR/ultratypes.h>
+ 
+ #include "sm64.h"
++#include "behavior_data.h"
+ #include "debug.h"
+ #include "interaction.h"
++#include "level_update.h"
+ #include "mario.h"
++#include "memory.h"
+ #include "object_list_processor.h"
+ #include "spawn_object.h"
+ 
++/**
++ * Extra pickup radius applied only when Mario is actively airbone
++ * when flying with the Wing Cap or being launched from a Cannon.
++ */
++#define AIRBORNE_PICKUP_RADIUS_BONUS 150.0f
++
++/**
++ * Returns the extra collision radius to grant this Mario/object pair, or
++ * 0 if the bonus doesn't apply (not flying, or not a coin/hidden star
++ * trigger).
++ */
++static f32 get_airborne_pickup_bonus(struct Object *a, struct Object *b) {
++    struct Object *other;
++
++    if (a == gMarioObject) {
++        other = b;
++    } else if (b == gMarioObject) {
++        other = a;
++    } else {
++        return 0.0f;
++    }
++
++    if (gMarioState == NULL) {
++    return 0.0f;
++	}
++
++	if (gMarioState->action != ACT_FLYING && gMarioState->action != ACT_SHOT_FROM_CANNON) {
++		return 0.0f;
++	}
++
++    if ((other->oInteractType & INTERACT_COIN)
++        || other->behavior == segmented_to_virtual(bhvHiddenStarTrigger)) {
++        return AIRBORNE_PICKUP_RADIUS_BONUS;
++    }
++
++    return 0.0f;
++}
++
+ struct Object *debug_print_obj_collision(struct Object *a) {
+     struct Object *sp24;
+     UNUSED s32 unused;
+@@ -28,7 +69,7 @@ int detect_object_hitbox_overlap(struct Object *a, struct Object *b) {
+     f32 dx = a->oPosX - b->oPosX;
+     UNUSED f32 sp30 = sp3C - sp38;
+     f32 dz = a->oPosZ - b->oPosZ;
+-    f32 collisionRadius = a->hitboxRadius + b->hitboxRadius;
++    f32 collisionRadius = a->hitboxRadius + b->hitboxRadius + get_airborne_pickup_bonus(a, b);
+     f32 distance = sqrtf(dx * dx + dz * dz);
+ 
+     if (collisionRadius > distance) {

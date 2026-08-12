@@ -1,0 +1,402 @@
+diff --git a/src/game/behaviors/boo.inc.c b/src/game/behaviors/boo.inc.c
+index 2d0ec0e..f6c5a53 100644
+--- a/src/game/behaviors/boo.inc.c
++++ b/src/game/behaviors/boo.inc.c
+@@ -466,7 +466,8 @@ static void boo_act_4(void) {
+         dialogID = DIALOG_107;
+     }
+ 
+-    if (cur_obj_update_dialog(2, 2, dialogID, 0)) {
++    // Skip the "boos remaining" / Big Boo summon text and continue immediately.
++    {
+         create_sound_spawner(SOUND_OBJ_DYING_ENEMY1);
+         obj_mark_for_deletion(o);
+ 
+diff --git a/src/game/behaviors/bowser.inc.c b/src/game/behaviors/bowser.inc.c
+index 22bd51a..84a00b2 100644
+--- a/src/game/behaviors/bowser.inc.c
++++ b/src/game/behaviors/bowser.inc.c
+@@ -791,8 +791,9 @@ void bowser_dead_bounce(void) {
+ s32 bowser_dead_wait_for_mario(void) {
+     s32 ret = 0;
+     cur_obj_become_intangible();
+-    if (cur_obj_init_animation_and_check_if_near_end(17) && o->oDistanceToMario < 700.0f
+-        && abs_angle_diff(gMarioObject->oMoveAngleYaw, o->oAngleToMario) > 0x6000)
++    // Don't gate the explosion/key-star on Mario being nearby and facing
++    // away from Bowser - just let the animation finish and continue.
++    if (cur_obj_init_animation_and_check_if_near_end(17))
+         ret = 1;
+     cur_obj_extend_animation_if_at_end();
+     o->oBowserUnkF8 = 0;
+@@ -833,7 +834,8 @@ s32 bowser_dead_not_bits_end(void) {
+             func_8031FFB4(SEQ_PLAYER_LEVEL, 60, 40);
+             o->oBowserUnkF8++;
+         }
+-        if (cur_obj_update_dialog(2, 18, sBowserDefeatedDialogText[o->oBehParams2ndByte], 0)) {
++        // Skip the "you defeated Bowser" text box and continue immediately.
++        {
+             o->oBowserUnkF8++;
+             cur_obj_play_sound_2(SOUND_GENERAL2_BOWSER_EXPLODE);
+             sequence_player_unlower(SEQ_PLAYER_LEVEL, 60);
+@@ -852,17 +854,13 @@ s32 bowser_dead_not_bits_end(void) {
+ s32 bowser_dead_bits_end(void) {
+     UNUSED s32 unused;
+     s32 ret = 0;
+-    s32 dialogID;
+     if (o->oBowserUnkF8 < 2) {
+-        if (gHudDisplay.stars < 120)
+-            dialogID = DIALOG_121;
+-        else
+-            dialogID = DIALOG_163;
+         if (o->oBowserUnkF8 == 0) {
+             func_8031FFB4(SEQ_PLAYER_LEVEL, 60, 40);
+             o->oBowserUnkF8++;
+         }
+-        if (cur_obj_update_dialog(2, 18, dialogID, 0)) {
++        // Skip the post-fight text box and continue immediately.
++        {
+             cur_obj_set_model(MODEL_BOWSER2);
+             sequence_player_unlower(SEQ_PLAYER_LEVEL, 60);
+             sequence_player_fade_out(0, 1);
+diff --git a/src/game/behaviors/capswitch.inc.c b/src/game/behaviors/capswitch.inc.c
+index 18c15b9..87953c2 100644
+--- a/src/game/behaviors/capswitch.inc.c
++++ b/src/game/behaviors/capswitch.inc.c
+@@ -25,7 +25,6 @@ void cap_switch_act_1(void) {
+ }
+ 
+ void cap_switch_act_2(void) {
+-    s32 sp1C;
+     if (o->oTimer < 5) {
+         cur_obj_scale_over_time(2, 4, 0.5f, 0.1f);
+         if (o->oTimer == 4) {
+@@ -35,9 +34,10 @@ void cap_switch_act_2(void) {
+             queue_rumble_data(5, 80);
+         }
+     } else {
+-        sp1C = cur_obj_update_dialog_with_cutscene(1, 0x0C, CUTSCENE_CAP_SWITCH_PRESS, 0);
+-        if (sp1C)
+-            o->oAction = 3;
++        // Skip the cap switch text box/camera cutscene, but still commit the
++        // save file like confirming the dialog normally would.
++        save_file_do_save(gCurrSaveFileNum - 1);
++        o->oAction = 3;
+     }
+ }
+ 
+diff --git a/src/game/behaviors/eyerok.inc.c b/src/game/behaviors/eyerok.inc.c
+index 25047fe..ca0265f 100644
+--- a/src/game/behaviors/eyerok.inc.c
++++ b/src/game/behaviors/eyerok.inc.c
+@@ -63,9 +63,8 @@ static void eyerok_boss_act_wake_up(void) {
+ }
+ 
+ static void eyerok_boss_act_show_intro_text(void) {
+-    if (cur_obj_update_dialog_with_cutscene(2, 0, CUTSCENE_DIALOG, DIALOG_117)) {
+-        o->oAction = EYEROK_BOSS_ACT_FIGHT;
+-    }
++    // Skip Eyerok's intro text and go straight to the fight.
++    o->oAction = EYEROK_BOSS_ACT_FIGHT;
+ }
+ 
+ static void eyerok_boss_act_fight(void) {
+@@ -117,11 +116,8 @@ static void eyerok_boss_act_fight(void) {
+ 
+ static void eyerok_boss_act_die(void) {
+     if (o->oTimer == 60) {
+-        if (cur_obj_update_dialog_with_cutscene(2, 0, CUTSCENE_DIALOG, DIALOG_118)) {
+-            spawn_default_star(0.0f, -900.0f, -3700.0f);
+-        } else {
+-            o->oTimer -= 1;
+-        }
++        // Skip Eyerok's defeat text and spawn the star immediately.
++        spawn_default_star(0.0f, -900.0f, -3700.0f);
+     } else if (o->oTimer > 120) {
+         stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+         obj_mark_for_deletion(o);
+diff --git a/src/game/behaviors/king_bobomb.inc.c b/src/game/behaviors/king_bobomb.inc.c
+index 7942b2b..3ea3837 100644
+--- a/src/game/behaviors/king_bobomb.inc.c
++++ b/src/game/behaviors/king_bobomb.inc.c
+@@ -35,7 +35,8 @@ void king_bobomb_act_0(void) {
+             o->oSubAction++;
+             func_8031FFB4(SEQ_PLAYER_LEVEL, 60, 40);
+         }
+-    } else if (cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, DIALOG_017)) {
++    } else {
++        // Skip King Bob-omb's intro speech and go straight to the fight.
+         o->oAction = 2;
+         o->oFlags |= OBJ_FLAG_HOLDABLE;
+     }
+@@ -170,7 +171,9 @@ void king_bobomb_act_6(void) {
+ 
+ void king_bobomb_act_7(void) {
+     cur_obj_init_animation_with_sound(2);
+-    if (cur_obj_update_dialog_with_cutscene(2, 2, CUTSCENE_DIALOG, DIALOG_116)) {
++    // Skip King Bob-omb's defeat speech and continue immediately (boss music
++    // is already stopped independently in king_bobomb_act_8).
++    {
+         create_sound_spawner(SOUND_OBJ_KING_WHOMP_DEATH);
+         cur_obj_hide();
+         cur_obj_become_intangible();
+@@ -262,8 +265,8 @@ void king_bobomb_act_5(void) { // bobomb returns home
+                 o->oSubAction++;
+             break;
+         case 4:
+-            if (cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, DIALOG_128))
+-                o->oAction = 2;
++            // Skip King Bob-omb's "here we go again" line before re-engaging.
++            o->oAction = 2;
+             break;
+     }
+ }
+diff --git a/src/game/behaviors/koopa.inc.c b/src/game/behaviors/koopa.inc.c
+index 2303906..3c134ec 100644
+--- a/src/game/behaviors/koopa.inc.c
++++ b/src/game/behaviors/koopa.inc.c
+@@ -708,34 +708,20 @@ static void koopa_the_quick_act_after_race(void) {
+     cur_obj_init_animation_with_sound(7);
+ 
+     if (o->parentObj->oKoopaRaceEndpointUnk100 == 0) {
+-        if (cur_obj_can_mario_activate_textbox_2(400.0f, 400.0f)) {
++        // Don't wait for Mario to be nearby - resolve the race outcome and
++        // spawn the star immediately, same as the Bowser fight change.
++        {
+             stop_background_music(SEQUENCE_ARGS(4, SEQ_LEVEL_SLIDE));
+ 
+-            // Determine which text to display
+-
+-            if (o->parentObj->oKoopaRaceEndpointRaceStatus != 0) {
+-                if (o->parentObj->oKoopaRaceEndpointRaceStatus < 0) {
+-                    // Mario cheated
+-                    o->parentObj->oKoopaRaceEndpointRaceStatus = 0;
+-                    o->parentObj->oKoopaRaceEndpointUnk100 = DIALOG_006;
+-                } else {
+-                    // Mario won
+-                    o->parentObj->oKoopaRaceEndpointUnk100 =
+-                        sKoopaTheQuickProperties[o->oKoopaTheQuickRaceIndex].winText;
+-                }
+-            } else {
+-                // KtQ won
+-                o->parentObj->oKoopaRaceEndpointUnk100 = DIALOG_041;
++            // Skip the post-race result text box entirely and resolve the
++            // outcome immediately (a cheated race still doesn't count).
++            if (o->parentObj->oKoopaRaceEndpointRaceStatus < 0) {
++                o->parentObj->oKoopaRaceEndpointRaceStatus = 0;
+             }
++            o->parentObj->oKoopaRaceEndpointUnk100 = -1;
+ 
+             o->oFlags &= ~OBJ_FLAG_ACTIVE_FROM_AFAR;
+         }
+-    } else if (o->parentObj->oKoopaRaceEndpointUnk100 > 0) {
+-        s32 dialogResponse = cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, o->parentObj->oKoopaRaceEndpointUnk100);
+-        if (dialogResponse != 0) {
+-            o->parentObj->oKoopaRaceEndpointUnk100 = -1;
+-            o->oTimer = 0;
+-        }
+     } else if (o->parentObj->oKoopaRaceEndpointRaceStatus != 0) {
+         spawn_default_star(sKoopaTheQuickProperties[o->oKoopaTheQuickRaceIndex].starPos[0],
+                    sKoopaTheQuickProperties[o->oKoopaTheQuickRaceIndex].starPos[1],
+diff --git a/src/game/behaviors/racing_penguin.inc.c b/src/game/behaviors/racing_penguin.inc.c
+index 9649a3b..df83575 100644
+--- a/src/game/behaviors/racing_penguin.inc.c
++++ b/src/game/behaviors/racing_penguin.inc.c
+@@ -117,24 +117,20 @@ static void racing_penguin_act_finish_race(void) {
+ }
+ 
+ static void racing_penguin_act_show_final_text(void) {
+-    s32 textResult;
+-
+     if (o->oRacingPenguinFinalTextbox == 0) {
+         if (cur_obj_rotate_yaw_toward(0, 200)) {
+             cur_obj_init_animation_with_sound(3);
+             o->oForwardVel = 0.0f;
+ 
+-            if (cur_obj_can_mario_activate_textbox_2(400.0f, 400.0f)) {
+-                if (o->oRacingPenguinMarioWon) {
+-                    if (o->oRacingPenguinMarioCheated) {
+-                        o->oRacingPenguinFinalTextbox = DIALOG_132;
+-                        o->oRacingPenguinMarioWon = FALSE;
+-                    } else {
+-                        o->oRacingPenguinFinalTextbox = DIALOG_056;
+-                    }
+-                } else {
+-                    o->oRacingPenguinFinalTextbox = DIALOG_037;
++            // Don't wait for Mario to be nearby - resolve the race outcome
++            // and spawn the star immediately, same as the Bowser fight change.
++            {
++                // Skip the post-race result text box entirely and resolve the
++                // outcome immediately (a cheated race still doesn't count).
++                if (o->oRacingPenguinMarioWon && o->oRacingPenguinMarioCheated) {
++                    o->oRacingPenguinMarioWon = FALSE;
+                 }
++                o->oRacingPenguinFinalTextbox = -1;
+             }
+         } else {
+             cur_obj_init_animation_with_sound(0);
+@@ -145,11 +141,6 @@ static void racing_penguin_act_show_final_text(void) {
+ 
+             o->oForwardVel = 4.0f;
+         }
+-    } else if (o->oRacingPenguinFinalTextbox > 0) {
+-        if ((textResult = cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, o->oRacingPenguinFinalTextbox)) != 0) {
+-            o->oRacingPenguinFinalTextbox = -1;
+-            o->oTimer = 0;
+-        }
+     } else if (o->oRacingPenguinMarioWon) {
+ #ifdef VERSION_JP
+         spawn_default_star(-7339.0f, -5700.0f, -6774.0f);
+diff --git a/src/game/behaviors/whomp.inc.c b/src/game/behaviors/whomp.inc.c
+index 7d6b88e..361e39e 100644
+--- a/src/game/behaviors/whomp.inc.c
++++ b/src/game/behaviors/whomp.inc.c
+@@ -28,7 +28,8 @@ void whomp_act_0(void) {
+                 cur_obj_set_pos_to_home();
+                 o->oHealth = 3;
+             }
+-        } else if (cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, DIALOG_114))
++        } else
++            // Skip King Whomp's intro speech and go straight to the fight.
+             o->oAction = 2;
+     } else if (o->oDistanceToMario < 500.0f)
+         o->oAction = 1;
+@@ -215,7 +216,8 @@ void whomp_act_6(void) {
+ 
+ void whomp_act_8(void) {
+     if (o->oBehParams2ndByte != 0) {
+-        if (cur_obj_update_dialog_with_cutscene(2, 2, CUTSCENE_DIALOG, DIALOG_115)) {
++        // Skip King Whomp's defeat speech and continue immediately.
++        {
+             obj_set_angle(o, 0, 0, 0);
+             cur_obj_hide();
+             cur_obj_become_intangible();
+diff --git a/src/game/behaviors/wiggler.inc.c b/src/game/behaviors/wiggler.inc.c
+index 4c465f8..1708a08 100644
+--- a/src/game/behaviors/wiggler.inc.c
++++ b/src/game/behaviors/wiggler.inc.c
+@@ -219,18 +219,9 @@ static void wiggler_act_walk(void) {
+ 
+     o->oWigglerWalkAnimSpeed = 0.06f * o->oForwardVel;
+ 
+-    // Update text if necessary
++    // Skip Wiggler's wake-up text entirely.
+     if (o->oWigglerTextStatus < WIGGLER_TEXT_STATUS_COMPLETED_DIALOG) {
+-        if (o->oWigglerTextStatus == WIGGLER_TEXT_STATUS_AWAIT_DIALOG) {
+-            func_8031FFB4(SEQ_PLAYER_LEVEL, 60, 40);
+-            o->oWigglerTextStatus = WIGGLER_TEXT_STATUS_SHOWING_DIALOG;
+-        }
+-
+-        // If Mario is positioned below the wiggler, assume he entered through the
+-        // lower cave entrance, so don't display text.
+-        if (gMarioObject->oPosY < o->oPosY || cur_obj_update_dialog_with_cutscene(2, 0, CUTSCENE_DIALOG, DIALOG_150) != 0) {
+-            o->oWigglerTextStatus = WIGGLER_TEXT_STATUS_COMPLETED_DIALOG;
+-        }
++        o->oWigglerTextStatus = WIGGLER_TEXT_STATUS_COMPLETED_DIALOG;
+     } else {
+         //! Every object's health is initially 2048, and wiggler's doesn't change
+         //  to 4 until after this runs the first time. It indexes out of bounds
+@@ -289,9 +280,6 @@ static void wiggler_act_walk(void) {
+  * action.
+  */
+ static void wiggler_act_jumped_on(void) {
+-    // Text to show on first, second, and third attack.
+-    s32 attackText[3] = { DIALOG_152, DIALOG_168, DIALOG_151 };
+-
+     // Shrink until the squish speed becomes 0, then unisquish
+     if (approach_f32_ptr(&o->oWigglerSquishSpeed, 0.0f, 0.05f)) {
+         // Note that 4 is the default scale
+@@ -300,11 +288,11 @@ static void wiggler_act_jumped_on(void) {
+         o->header.gfx.scale[1] -= o->oWigglerSquishSpeed;
+     }
+ 
+-    // Wait for a second after unsquishing, then show text and either shrink (if
+-    // defeated) or go back to walking
++    // Wait for a second after unsquishing, then either shrink (if
++    // defeated) or go back to walking. Skip the attack-taunt text box.
+     if (o->header.gfx.scale[1] >= 4.0f) {
+         if (o->oTimer > 30) {
+-            if (cur_obj_update_dialog_with_cutscene(2, 0, CUTSCENE_DIALOG, attackText[o->oHealth - 2]) != 0) {
++            {
+                 // Because we don't want the wiggler to disappear after being
+                 // defeated, we leave its health at 1
+                 if (--o->oHealth == 1) {
+diff --git a/src/game/camera.c b/src/game/camera.c
+index 81d3527..a5aa2e1 100644
+--- a/src/game/camera.c
++++ b/src/game/camera.c
+@@ -8223,12 +8223,10 @@ BAD_RETURN(s32) bowser_fight_intro_dialog(UNUSED struct Camera *c) {
+ /**
+  * Create the dialog box and wait until it's gone.
+  */
+-BAD_RETURN(s32) cutscene_bowser_arena_dialog(struct Camera *c) {
+-    cutscene_event(bowser_fight_intro_dialog, c, 0, 0);
+-
+-    if (get_dialog_id() == -1) {
+-        gCutsceneTimer = CUTSCENE_LOOP;
+-    }
++BAD_RETURN(s32) cutscene_bowser_arena_dialog(UNUSED struct Camera *c) {
++    // Skip Bowser's pre-fight taunt text entirely and go straight into the
++    // fight instead of waiting on the player to click through the dialog.
++    gCutsceneTimer = CUTSCENE_LOOP;
+ }
+ 
+ /**
+diff --git a/src/game/level_update.c b/src/game/level_update.c
+index 09034cd..1f7e16b 100644
+--- a/src/game/level_update.c
++++ b/src/game/level_update.c
+@@ -247,7 +247,12 @@ void fade_into_special_warp(u32 arg, u32 color) {
+ void stub_level_update_1(void) {
+ }
+ 
+-void load_level_init_text(u32 arg) {
++void load_level_init_text(UNUSED u32 arg) {
++    // Skip the course entry text popup entirely (including the cap-room
++    // hint boxes) so entering an area flows straight into gameplay.
++    return;
++
++#if 0
+     s32 gotAchievement;
+     u32 dialogID = gCurrentArea->dialog[arg];
+ 
+@@ -277,6 +282,7 @@ void load_level_init_text(u32 arg) {
+         level_set_transition(-1, NULL);
+         create_dialog_box(dialogID);
+     }
++#endif
+ }
+ 
+ void init_door_warp(struct SpawnInfo *spawnInfo, u32 arg1) {
+diff --git a/src/game/obj_behaviors_2.c b/src/game/obj_behaviors_2.c
+index 165fc36..a53007e 100644
+--- a/src/game/obj_behaviors_2.c
++++ b/src/game/obj_behaviors_2.c
+@@ -91,22 +91,13 @@ static s16 obj_get_pitch_from_vel(void) {
+ }
+ 
+ /**
+- * Show dialog proposing a race.
+- * If the player accepts the race, then leave time stop enabled and Mario in the
+- * text action so that the racing object can wait before starting the race.
+- * If the player declines the race, then disable time stop and allow Mario to
+- * move again.
++ * Originally showed a dialog proposing a race and returned the player's
++ * response. Now always accepts the race immediately, skipping the text box
++ * (covers Koopa the Quick and the Big Penguin race).
+  */
+-static s32 obj_update_race_proposition_dialog(s16 dialogID) {
+-    s32 dialogResponse =
+-        cur_obj_update_dialog_with_cutscene(2, DIALOG_UNK2_FLAG_0 | DIALOG_UNK2_LEAVE_TIME_STOP_ENABLED, CUTSCENE_RACE_DIALOG, dialogID);
+-
+-    if (dialogResponse == 2) {
+-        set_mario_npc_dialog(0);
+-        disable_time_stop_including_mario();
+-    }
+-
+-    return dialogResponse;
++static s32 obj_update_race_proposition_dialog(UNUSED s16 dialogID) {
++    play_race_fanfare();
++    return 1;
+ }
+ 
+ static void obj_set_dist_from_home(f32 distFromHome) {

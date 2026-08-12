@@ -1,0 +1,263 @@
+diff --git a/include/text_options_strings.h.in b/include/text_options_strings.h.in
+index 61e5bce7..e0cb0e3c 100644
+--- a/include/text_options_strings.h.in
++++ b/include/text_options_strings.h.in
+@@ -58,6 +58,9 @@
+ #define TEXT_OPT_THREEPT   _("THREE POINT")
+ #define TEXT_OPT_APPLY     _("APPLY")
+ #define TEXT_OPT_RESETWND  _("RESET WINDOW")
++#define TEXT_OPT_INSTRSHUFFLE   _("RANDOM INSTRUMENTS")
++#define TEXT_OPT_JINGLESHUFFLE  _("RANDOM JINGLES")
++#define TEXT_OPT_SFXSHUFFLE     _("RANDOM SOUND EFFECTS")
+ 
+ #define TEXT_BIND_A        _("A BUTTON")
+ #define TEXT_BIND_B        _("B BUTTON")
+@@ -124,6 +127,9 @@
+ #define TEXT_OPT_THREEPT   _("Three-point")
+ #define TEXT_OPT_APPLY     _("Apply")
+ #define TEXT_OPT_RESETWND  _("Reset Window")
++#define TEXT_OPT_INSTRSHUFFLE   _("Random Instruments")
++#define TEXT_OPT_JINGLESHUFFLE  _("Random Jingles")
++#define TEXT_OPT_SFXSHUFFLE     _("Random Sound Effects")
+ 
+ #define TEXT_BIND_A        _("A Button")
+ #define TEXT_BIND_B        _("B Button")
+diff --git a/src/audio/seqplayer.c b/src/audio/seqplayer.c
+index 91146bbb..4608da0a 100644
+--- a/src/audio/seqplayer.c
++++ b/src/audio/seqplayer.c
+@@ -6,6 +6,7 @@
+ #include "heap.h"
+ #include "load.h"
+ #include "seqplayer.h"
++#include "sm64ap.h"
+ 
+ #define PORTAMENTO_IS_SPECIAL(x) ((x).mode & 0x80)
+ #define PORTAMENTO_MODE(x) ((x).mode & ~0x80)
+@@ -903,6 +904,8 @@ GLOBAL_ASM("asm/non_matchings/seq_channel_layer_process_script_us.s")
+ u8 get_instrument(struct SequenceChannel *seqChannel, u8 instId, struct Instrument **instOut, struct AdsrSettings *adsr) {
+     struct Instrument *inst;
+ #ifdef VERSION_EU
++    instId = SM64AP_ResolveInstrument(seqChannel->bankId, instId, gCtlEntries[seqChannel->bankId].numInstruments,
++                                       (u8)(seqChannel->seqPlayer - gSequencePlayers));
+     inst = get_instrument_inner(seqChannel->bankId, instId);
+     if (inst == NULL)
+     {
+@@ -925,6 +928,10 @@ u8 get_instrument(struct SequenceChannel *seqChannel, u8 instId, struct Instrume
+         instId--;
+     }
+ 
++    instId = SM64AP_ResolveInstrument(seqChannel->bankId, instId,
++                                       gCtlEntries[seqChannel->bankId].numInstruments,
++                                       (u8)(seqChannel->seqPlayer - gSequencePlayers));
++
+     inst = gCtlEntries[seqChannel->bankId].instruments[instId];
+     if (inst == NULL) {
+         struct SequenceChannel seqChannelCpy = *seqChannel;
+diff --git a/src/engine/level_script.c b/src/engine/level_script.c
+index a4f086d0..5c353ccb 100644
+--- a/src/engine/level_script.c
++++ b/src/engine/level_script.c
+@@ -744,6 +744,7 @@ static void level_cmd_set_music(void) {
+         gAreas[sCurrAreaIndex].musicParam = CMD_GET(s16, 2);
+         gAreas[sCurrAreaIndex].musicParam2 =
+             SM64AP_ResolveAreaMusic(gCurrLevelNum, sCurrAreaIndex, CMD_GET(s16, 4));
++        SM64AP_ReshuffleInstruments();
+     }
+     sCurrentCmd = CMD_NEXT;
+ }
+diff --git a/src/game/options_menu.c b/src/game/options_menu.c
+index ced31038..9974b988 100644
+--- a/src/game/options_menu.c
++++ b/src/game/options_menu.c
+@@ -100,6 +100,9 @@ static const u8 optsAudioStr[][32] = {
+     { TEXT_OPT_MUSVOLUME },
+     { TEXT_OPT_SFXVOLUME },
+     { TEXT_OPT_ENVVOLUME },
++    { TEXT_OPT_INSTRSHUFFLE },
++    { TEXT_OPT_JINGLESHUFFLE },
++    { TEXT_OPT_SFXSHUFFLE },
+ };
+ 
+ static const u8 optsCheatsStr[][64] = {
+@@ -287,6 +290,9 @@ static struct Option optsAudio[] = {
+     DEF_OPT_SCROLL( optsAudioStr[1], &configMusicVolume, 0, MAX_VOLUME, 1),
+     DEF_OPT_SCROLL( optsAudioStr[2], &configSfxVolume, 0, MAX_VOLUME, 1),
+     DEF_OPT_SCROLL( optsAudioStr[3], &configEnvVolume, 0, MAX_VOLUME, 1),
++    DEF_OPT_TOGGLE( optsAudioStr[4], &configInstrumentShuffleMode ),
++    DEF_OPT_TOGGLE( optsAudioStr[5], &configJingleInstrumentShuffleMode ),
++    DEF_OPT_TOGGLE( optsAudioStr[6], &configSfxInstrumentShuffleMode ),
+ };
+ 
+ static struct SubMenu menuApItems;
+diff --git a/src/pc/configfile.c b/src/pc/configfile.c
+index 47c43294..3a0f0b1a 100644
+--- a/src/pc/configfile.c
++++ b/src/pc/configfile.c
+@@ -55,6 +55,9 @@ unsigned int configMusicVolume = MAX_VOLUME;
+ unsigned int configSfxVolume = MAX_VOLUME;
+ unsigned int configEnvVolume = MAX_VOLUME;
+ unsigned int configSoundMode = 0;
++bool configInstrumentShuffleMode = false; // false=Disabled, true=Enabled (random on load)
++bool configJingleInstrumentShuffleMode = false; // same, but for misc/jingle music (SEQ_PLAYER_ENV)
++bool configSfxInstrumentShuffleMode = false; // same, but for sound effects
+ 
+ // Keyboard mappings (VK_ values, by default keyboard/gamepad/mouse)
+ unsigned int configKeyA[MAX_BINDS]          = { 0x0026,   0x1000,     0x1103     };
+@@ -108,6 +111,9 @@ static const struct ConfigOption options[] = {
+     {.name = "sfx_volume",           .type = CONFIG_TYPE_UINT, .uintValue = &configSfxVolume},
+     {.name = "env_volume",           .type = CONFIG_TYPE_UINT, .uintValue = &configEnvVolume},
+     {.name = "sound_mode",           .type = CONFIG_TYPE_UINT, .uintValue = &configSoundMode},
++    {.name = "instrument_shuffle",   .type = CONFIG_TYPE_BOOL, .boolValue = &configInstrumentShuffleMode},
++    {.name = "jingle_instrument_shuffle", .type = CONFIG_TYPE_BOOL, .boolValue = &configJingleInstrumentShuffleMode},
++    {.name = "sfx_instrument_shuffle", .type = CONFIG_TYPE_BOOL, .boolValue = &configSfxInstrumentShuffleMode},
+     {.name = "key_a",                .type = CONFIG_TYPE_BIND, .uintValue = configKeyA},
+     {.name = "key_b",                .type = CONFIG_TYPE_BIND, .uintValue = configKeyB},
+     {.name = "key_start",            .type = CONFIG_TYPE_BIND, .uintValue = configKeyStart},
+diff --git a/src/pc/configfile.h b/src/pc/configfile.h
+index c1a950cd..9c4aeae7 100644
+--- a/src/pc/configfile.h
++++ b/src/pc/configfile.h
+@@ -23,6 +23,19 @@ extern unsigned int configMasterVolume;
+ extern unsigned int configMusicVolume;
+ extern unsigned int configSfxVolume;
+ extern unsigned int configEnvVolume;
++
++// Instrument shuffle toggle: false = Disabled, true = Enabled (random on
++// load; picks a random substitute instrument per bank/instrument pair once
++// per area load).
++extern bool configInstrumentShuffleMode;
++// Same, but for the "misc music" sequence player (SEQ_PLAYER_ENV) -- things
++// like the puzzle/key jingle. Kept separate in case it doesn't feel like
++// "music" to the player.
++extern bool configJingleInstrumentShuffleMode;
++// Same, but for sound effects (kept separate from music -- shuffling the two
++// together turned out to shuffle sound effect timbres too, which was funny
++// but not what most people want on by default).
++extern bool configSfxInstrumentShuffleMode;
+ extern unsigned int configSoundMode;
+ extern unsigned int configKeyA[];
+ extern unsigned int configKeyB[];
+diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
+index 5897a4a0..84d1e0f5 100644
+--- a/src/sm64ap.cpp
++++ b/src/sm64ap.cpp
+@@ -222,6 +222,20 @@ std::map<int,int> map_music;
+ int sm64_skybox_shuffle_mode = 0;
+ std::map<int,int> map_skybox;
+ static int sm64_loaded_skybox = -1;
++// Instrument shuffling ("Random Instruments" sound option). Unlike music and
++// skybox shuffle mode, this is a local player preference toggle
++// (configInstrumentShuffleMode, read directly from configfile.h) rather than
++// something set via Archipelago slot data: when enabled, a random substitute
++// instrument is picked per bank/instrument pair once per area load.
++static std::map<int,int> sm64_instrument_random_cache;
++// Separate cache for the "misc music" sequence player (SEQ_PLAYER_ENV), e.g.
++// the puzzle/key jingle -- kept independent of level music in case it
++// doesn't feel like "music" to the player.
++static std::map<int,int> sm64_jingle_instrument_random_cache;
++// Separate cache for the SFX sequence player (SEQ_PLAYER_SFX), so that
++// shuffling music instruments doesn't also shuffle sound effect timbres
++// (and vice versa) unless the player explicitly turns both on.
++static std::map<int,int> sm64_sfx_instrument_random_cache;
+ std::map<int,int> map_start_inventory;
+ int sm64_coin_star_requirements[15] = {
+     100, 100, 100, 100, 100,
+@@ -235,6 +249,12 @@ static constexpr int SM64AP_MUSIC_SHUFFLE_RANDOM_ON_LOAD = 2;
+ static constexpr int SM64AP_SKYBOX_SHUFFLE_OFF = 0;
+ static constexpr int SM64AP_SKYBOX_SHUFFLE_MAP = 1;
+ static constexpr int SM64AP_SKYBOX_SHUFFLE_RANDOM_ON_LOAD = 2;
++// Mirrors SEQ_PLAYER_LEVEL/SEQ_PLAYER_ENV/SEQ_PLAYER_SFX from
++// src/audio/external.h (not included here to avoid pulling audio-internal
++// headers into this file). Keep these in sync if those ever change.
++static constexpr u8 SM64AP_SEQ_PLAYER_LEVEL = 0;
++static constexpr u8 SM64AP_SEQ_PLAYER_ENV = 1;
++static constexpr u8 SM64AP_SEQ_PLAYER_SFX = 2;
+ static constexpr int SM64AP_NUM_COIN_STAR_REQUIREMENTS = 15;
+ static constexpr int SM64AP_NUM_COIN_CHECK_COURSES = 24;
+ static constexpr int SM64AP_DEFAULT_COIN_STAR_REQUIREMENT = 100;
+@@ -3533,6 +3553,58 @@ s16 SM64AP_ResolveSkyboxBackground(s16 vanillaSkybox) {
+     return sm64_loaded_skybox >= 0 ? static_cast<s16>(sm64_loaded_skybox) : vanillaSkybox;
+ }
+ 
++void SM64AP_ReshuffleInstruments() {
++    // Clears the per-area "Random On Load" caches (music, jingles, and SFX
++    // each kept separately). The next time each (bank, instrument) pair is
++    // queried via SM64AP_ResolveInstrument, a fresh random substitute will
++    // be chosen and cached for the rest of the area, mirroring
++    // SM64AP_SelectSkybox's "Random On Load" behavior.
++    sm64_instrument_random_cache.clear();
++    sm64_jingle_instrument_random_cache.clear();
++    sm64_sfx_instrument_random_cache.clear();
++}
++
++u8 SM64AP_ResolveInstrument(u8 bankId, u8 instId, u8 numInstruments, u8 seqPlayerIdx) {
++    if (numInstruments == 0) {
++        return instId;
++    }
++
++    bool shuffleEnabled;
++    std::map<int,int> *randomCache;
++
++    switch (seqPlayerIdx) {
++        case SM64AP_SEQ_PLAYER_ENV:
++            shuffleEnabled = configJingleInstrumentShuffleMode;
++            randomCache = &sm64_jingle_instrument_random_cache;
++            break;
++
++        case SM64AP_SEQ_PLAYER_SFX:
++            shuffleEnabled = configSfxInstrumentShuffleMode;
++            randomCache = &sm64_sfx_instrument_random_cache;
++            break;
++
++        case SM64AP_SEQ_PLAYER_LEVEL:
++        default:
++            shuffleEnabled = configInstrumentShuffleMode;
++            randomCache = &sm64_instrument_random_cache;
++            break;
++    }
++
++    if (!shuffleEnabled) {
++        return instId;
++    }
++
++    int key = (static_cast<int>(bankId) << 8) | instId;
++    auto entry = randomCache->find(key);
++    if (entry != randomCache->end()
++        && entry->second >= 0 && entry->second < numInstruments) {
++        return static_cast<u8>(entry->second);
++    }
++    u8 randomInstId = static_cast<u8>(random_u16() % numInstruments);
++    (*randomCache)[key] = randomInstId;
++    return randomInstId;
++}
++
+ bool SM64AP_HaveKey1() {
+     return SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_BASEMENT);
+ }
+diff --git a/src/sm64ap.h b/src/sm64ap.h
+index b41b59ce..cd82efc4 100644
+--- a/src/sm64ap.h
++++ b/src/sm64ap.h
+@@ -425,6 +425,21 @@ AP_EXTERN_C s16 SM64AP_GetWDWEntranceWaterLevel(s16 vanillaWaterLevel);
+ AP_EXTERN_C s16 SM64AP_ResolveAreaMusic(s16 level, s16 area, s16 vanillaSeq);
+ AP_EXTERN_C void SM64AP_SelectSkybox(s16 level, s16 area, s16 vanillaSkybox);
+ AP_EXTERN_C s16 SM64AP_ResolveSkyboxBackground(s16 vanillaSkybox);
++// Called once per area/level load (alongside music/skybox selection) so that
++// "Random On Load" instrument shuffling picks a fresh set of instrument
++// substitutions for the new area, matching the behavior of the music and
++// skybox "Random On Load" shuffle modes.
++AP_EXTERN_C void SM64AP_ReshuffleInstruments(void);
++// Resolves instId (0..numInstruments-1) for the given sound bank according to
++// the local sound options for the sequence player the note belongs to --
++// pass seqPlayerIdx as SEQ_PLAYER_LEVEL/SEQ_PLAYER_ENV/SEQ_PLAYER_SFX (the
++// index of seqChannel->seqPlayer within gSequencePlayers) so level music,
++// jingles (e.g. the puzzle/key jingle), and sound effects can each be
++// shuffled independently via configInstrumentShuffleMode,
++// configJingleInstrumentShuffleMode, and configSfxInstrumentShuffleMode
++// respectively. Disabled returns instId unchanged; Enabled picks a random
++// instId once per area load and reuses it for the rest of that area.
++AP_EXTERN_C u8 SM64AP_ResolveInstrument(u8 bankId, u8 instId, u8 numInstruments, u8 seqPlayerIdx);
+ AP_EXTERN_C bool SM64AP_CheckedLoc(int);
+ AP_EXTERN_C void SM64AP_CheckCoinCount(int, int);
+ AP_EXTERN_C bool SM64AP_OneUpChecksEnabled();

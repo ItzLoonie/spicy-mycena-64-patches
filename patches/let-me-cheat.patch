@@ -1,0 +1,46 @@
+diff --git a/src/game/behaviors/koopa.inc.c b/src/game/behaviors/koopa.inc.c
+index 2303906..6ffc436 100644
+--- a/src/game/behaviors/koopa.inc.c
++++ b/src/game/behaviors/koopa.inc.c
+@@ -828,11 +828,9 @@ void bhv_koopa_race_endpoint_update(void) {
+ 
+             if (!o->oKoopaRaceEndpointKoopaFinished) {
+                 play_race_fanfare();
+-                if (gMarioShotFromCannon) {
+-                    o->oKoopaRaceEndpointRaceStatus = -1;
+-                } else {
+-                    o->oKoopaRaceEndpointRaceStatus = 1;
+-                }
++                // Disable the "cheated by using the cannon" check - a win
++                // always counts as a legitimate win, cannon or not.
++                o->oKoopaRaceEndpointRaceStatus = 1;
+             }
+         }
+     }
+diff --git a/src/game/behaviors/racing_penguin.inc.c b/src/game/behaviors/racing_penguin.inc.c
+index 9649a3b..fd52ddf 100644
+--- a/src/game/behaviors/racing_penguin.inc.c
++++ b/src/game/behaviors/racing_penguin.inc.c
+@@ -95,11 +95,8 @@ static void racing_penguin_act_race(void) {
+         }
+     }
+ 
+-    if (mario_is_in_air_action()) {
+-        if (o->oTimer > 60) {
+-            o->oRacingPenguinMarioCheated = TRUE;
+-        }
+-    } else {
++    // Disable the "spent too long airborne" cheat check.
++    if (!mario_is_in_air_action()) {
+         o->oTimer = 0;
+     }
+ }
+@@ -200,7 +197,5 @@ void bhv_penguin_race_finish_line_update(void) {
+ }
+ 
+ void bhv_penguin_race_shortcut_check_update(void) {
+-    if (o->oDistanceToMario < 500.0f) {
+-        o->parentObj->oRacingPenguinMarioCheated = TRUE;
+-    }
++    // Disable the "took a shortcut" cheat check.
+ }

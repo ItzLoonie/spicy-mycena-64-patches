@@ -1,0 +1,197 @@
+diff --git a/src/game/ingame_menu.c b/src/game/ingame_menu.c
+index e8175b98..59d16ddc 100644
+--- a/src/game/ingame_menu.c
++++ b/src/game/ingame_menu.c
+@@ -3082,14 +3082,58 @@ static void **get_pause_course_name_table(void) {
+ #endif
+ }
+ 
++// Appends " (SHORT, NAMES)" (Area Rando spoiler) to baseTitle into dest, if applicable.
++// '(' and ')' aren't covered by the ASCII_TO_DIALOG macro, so they're written directly using
++// their charmap.txt values.
++#define DIALOG_CHAR_OPEN_PAREN  0xE1
++#define DIALOG_CHAR_CLOSE_PAREN 0xE3
++
++static void pause_append_area_rando_spoiler(const u8 *baseTitle, u8 *dest, s16 maxLength, s16 levelNum) {
++    const char *spoiler = SM64AP_GetAreaRandoSpoiler(levelNum);
++    s16 i = 0;
++    s16 j;
++
++    while (baseTitle[i] != DIALOG_CHAR_TERMINATOR && i < maxLength - 1) {
++        dest[i] = baseTitle[i];
++        i++;
++    }
++
++    if (spoiler[0] != '\0') {
++        if (i < maxLength - 1) dest[i++] = DIALOG_CHAR_SPACE;
++        if (i < maxLength - 1) dest[i++] = DIALOG_CHAR_OPEN_PAREN;
++        for (j = 0; spoiler[j] != '\0' && i < maxLength - 1; j++) {
++            if (spoiler[j] == ' ') {
++                dest[i++] = DIALOG_CHAR_SPACE;
++            } else if (spoiler[j] == ',') {
++                dest[i++] = DIALOG_CHAR_COMMA;
++            } else {
++                dest[i++] = ASCII_TO_DIALOG(spoiler[j]);
++            }
++        }
++        if (i < maxLength - 1) dest[i++] = DIALOG_CHAR_CLOSE_PAREN;
++    }
++
++    dest[i] = DIALOG_CHAR_TERMINATOR;
++}
++
+ static const u8 *pause_unlock_view_title(const struct PauseUnlockView *view) {
+     void **courseNameTbl = get_pause_course_name_table();
++    static u8 sPauseUnlockViewTitle[64];
++    const u8 *baseTitle;
+ 
+     if (view->type == PAUSE_UNLOCK_VIEW_COURSE) {
+-        return segmented_to_virtual(courseNameTbl[view->courseNum]);
++        baseTitle = segmented_to_virtual(courseNameTbl[view->courseNum]);
++    } else {
++        baseTitle = view->label;
++    }
++
++    // The castle view isn't a shuffled entrance, so it's left as-is.
++    if (view->type == PAUSE_UNLOCK_VIEW_CASTLE) {
++        return baseTitle;
+     }
+ 
+-    return view->label;
++    pause_append_area_rando_spoiler(baseTitle, sPauseUnlockViewTitle, sizeof(sPauseUnlockViewTitle), view->levelNum);
++    return sPauseUnlockViewTitle;
+ }
+ 
+ static void render_pause_castle_unlocks(s16 x, s16 y);
+diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
+index 548112ae..ff99ab44 100644
+--- a/src/sm64ap.cpp
++++ b/src/sm64ap.cpp
+@@ -1970,6 +1970,112 @@ static int SM64AP_GetMappedEntrance(int sourceEntrance) {
+     return sourceEntrance;
+ }
+ 
++struct SM64APEntranceSpoilerSource {
++    s16 level;
++    const char *shortName;
++};
++
++
++// One entry per vanilla entrance that Area Rando can shuffle.
++static const SM64APEntranceSpoilerSource sm64ap_spoiler_sources[] = {
++    { LEVEL_BOB,   "BOB" },
++    { LEVEL_WF,    "WF" },
++    { LEVEL_JRB,   "JRB" },
++    { LEVEL_CCM,   "CCM" },
++    { LEVEL_BBH,   "BBH" },
++    { LEVEL_HMC,   "HMC" },
++    { LEVEL_LLL,   "LLL" },
++    { LEVEL_SSL,   "SSL" },
++    { LEVEL_DDD,   "DDD" },
++    { LEVEL_SL,    "SL" },
++    { LEVEL_TTM,   "TTM" },
++    { LEVEL_RR,    "RR" },
++    { LEVEL_PSS,   "PSS" },
++    { LEVEL_SA,    "SA" },
++    { LEVEL_BITDW, "BITDW" },
++    { LEVEL_COTMC, "COTMC" },
++    { LEVEL_TOTWC, "TOTWC" },
++    { LEVEL_VCUTM, "VCUTM" },
++    { LEVEL_BITFS, "BITFS" },
++    { LEVEL_WMOTR, "WMOTR" },
++};
++
++const char *SM64AP_GetAreaRandoSpoiler(s16 destLevel) {
++    static std::string spoilerText;
++
++    // Bowser in the Sky is never shuffled, so there's nothing to spoil. 
++	// An empty entrance map also means Area Rando isn't active for this seed.
++    if (destLevel == LEVEL_BITS || map_entrances.empty()) {
++        return "";
++    }
++
++    std::vector<const char *> matches;
++    for (const SM64APEntranceSpoilerSource &source : sm64ap_spoiler_sources) {
++		int entrance = SM64AP_ENTRANCE_ID(source.level, 1);
++		int destination = SM64AP_GetMappedEntrance(entrance);
++
++		if (destination / 10 == destLevel) {
++			matches.push_back(source.shortName);
++		}
++	}
++    static const char *wdwNames[] = { "WDW L", "WDW M", "WDW H", };
++	for (int variant = SM64AP_ENTRANCE_WDW_LOW;
++		 variant <= SM64AP_ENTRANCE_WDW_HIGH;
++		 variant++) {
++
++		int entrance = SM64AP_ENTRANCE_ID(LEVEL_WDW, variant);
++		int destination = SM64AP_GetMappedEntrance(entrance);
++
++		if (destination / 10 == destLevel ||
++			(LEVEL_WDW == destLevel && destination == entrance)) {
++			matches.push_back(
++				wdwNames[variant - SM64AP_ENTRANCE_WDW_LOW]
++			);
++		}
++	}
++    static const char *ttcNames[] = { "TTC 12", "TTC 3", "TTC 6", "TTC 9",};
++
++	for (int variant = SM64AP_ENTRANCE_TTC_STOPPED;
++		 variant <= SM64AP_ENTRANCE_TTC_FAST;
++		 variant++) {
++
++		int entrance = SM64AP_ENTRANCE_ID(LEVEL_TTC, variant);
++		int destination = SM64AP_GetMappedEntrance(entrance);
++
++		if (destination / 10 == destLevel ||
++			(LEVEL_TTC == destLevel && destination == entrance)) {
++			matches.push_back(
++				ttcNames[variant - SM64AP_ENTRANCE_TTC_STOPPED]
++			);
++		}
++	}
++	
++	static const char *thiNames[] = { "THI H", "THI T" };
++
++	for (int variant = 1; variant <= 2; variant++) {
++		int entrance = SM64AP_ENTRANCE_ID(LEVEL_THI, variant);
++		int destination = SM64AP_GetMappedEntrance(entrance);
++
++		if (destination / 10 == destLevel ||
++			(LEVEL_THI == destLevel && destination == entrance)) {
++			matches.push_back(thiNames[variant - 1]);
++		}
++	}
++
++    if (matches.empty()) {
++        return "";
++    }
++
++    spoilerText.clear();
++    for (size_t i = 0; i < matches.size(); i++) {
++        if (i != 0) {
++            spoilerText += ", ";
++        }
++        spoilerText += matches[i];
++    }
++    return spoilerText.c_str();
++}
++
+ static void SM64AP_SetTTCEntranceVariantSpeed(int variant) {
+     switch (variant) {
+         case SM64AP_ENTRANCE_TTC_STOPPED:
+diff --git a/src/sm64ap.h b/src/sm64ap.h
+index 5db40efb..6f73589a 100644
+--- a/src/sm64ap.h
++++ b/src/sm64ap.h
+@@ -422,6 +422,10 @@ AP_EXTERN_C void SM64AP_SetClockToTTCState();
+ AP_EXTERN_C void SM64AP_SetTTCEntranceSpeed(int speed);
+ AP_EXTERN_C int SM64AP_GetTTCEntranceVariant();
+ AP_EXTERN_C s16 SM64AP_GetWDWEntranceWaterLevel(s16 vanillaWaterLevel);
++// Returns a comma-separated list of short entrance names (e.g. "BOB, PSS, LLL") describing which
++// vanilla entrance(s) now lead to destLevel under Area Rando, or "" if there's nothing to report
++// (Area Rando inactive, destLevel not shuffled, or destLevel is Bowser in the Sky).
++AP_EXTERN_C const char *SM64AP_GetAreaRandoSpoiler(s16 destLevel);
+ AP_EXTERN_C s16 SM64AP_ResolveAreaMusic(s16 level, s16 area, s16 vanillaSeq);
+ AP_EXTERN_C void SM64AP_SelectSkybox(s16 level, s16 area, s16 vanillaSkybox);
+ AP_EXTERN_C s16 SM64AP_ResolveSkyboxBackground(s16 vanillaSkybox);

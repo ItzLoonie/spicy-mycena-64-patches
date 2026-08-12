@@ -1,0 +1,97 @@
+diff -ru sm64ex_orig/src/game/ingame_menu.c sm64ex/src/game/ingame_menu.c
+--- sm64ex_orig/src/game/ingame_menu.c	2026-08-10 09:21:50.000000000 +0000
++++ sm64ex/src/game/ingame_menu.c	2026-08-11 06:26:46.595231715 +0000
+@@ -2981,6 +2981,53 @@
+     return 1;
+ }
+ 
++static s16 render_pause_bowser_hit_count(
++    s16 x, s16 y, s16 valueX, s16 levelNum, s16 row, s16 maxRows
++) {
++    static const u8 label[] = {
++        ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('S'),
++        ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE,
++        ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('S'),
++        DIALOG_CHAR_TERMINATOR
++    };
++    u8 value[4];
++    s16 hitCount = SM64AP_BowserArenaHitCount(levelNum);
++
++    if (hitCount < 0 || row >= maxRows) {
++        return 0;
++    }
++    int_to_str(hitCount, value);
++    print_generic_string(x, y - row * 11, label);
++    print_generic_string(valueX, y - row * 11, value);
++    return 1;
++}
++
++static s16 render_pause_bowser_collapse_hit_count(
++    s16 x, s16 y, s16 valueX, s16 levelNum, s16 row, s16 maxRows
++) {
++    static const u8 label[] = {
++        ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('L'),
++        ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('P'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'),
++        DIALOG_CHAR_SPACE,
++        ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('S'),
++        DIALOG_CHAR_TERMINATOR
++    };
++    u8 value[4];
++    s16 collapseHits;
++
++    if (levelNum != LEVEL_BITS || row >= maxRows) {
++        return 0;
++    }
++    collapseHits = SM64AP_BowserInTheSkyStageCollapseHits();
++    if (collapseHits < 0) {
++        return 0;
++    }
++    int_to_str(collapseHits, value);
++    print_generic_string(x, y - row * 11, label);
++    print_generic_string(valueX, y - row * 11, value);
++    return 1;
++}
++
+ static s16 render_pause_bowser_extra_one_ups(
+     s16 x, s16 y, s16 statusX, s16 levelNum, s16 row, s16 maxRows
+ ) {
+@@ -3095,6 +3142,10 @@
+         x, y, x + 170, view->levelNum, unlockCount, 11);
+     unlockCount += render_pause_bowser_bomb_count(
+         x, y, x + 170, view->levelNum, unlockCount, 11);
++    unlockCount += render_pause_bowser_hit_count(
++        x, y, x + 170, view->levelNum, unlockCount, 11);
++    unlockCount += render_pause_bowser_collapse_hit_count(
++        x, y, x + 170, view->levelNum, unlockCount, 11);
+ 
+     if (unlockCount == 0 && view->type != PAUSE_UNLOCK_VIEW_COURSE) {
+         print_generic_string(x, y, textNoItems);
+diff -ru sm64ex_orig/src/sm64ap.cpp sm64ex/src/sm64ap.cpp
+--- sm64ex_orig/src/sm64ap.cpp	2026-08-10 09:21:50.000000000 +0000
++++ sm64ex/src/sm64ap.cpp	2026-08-10 14:02:38.237138956 +0000
+@@ -3241,6 +3241,14 @@
+     return arena >= 0 ? sm64_bowser_arena_bombs[arena] : -1;
+ }
+ 
++int SM64AP_BowserArenaHitCount(s16 level) {
++    int arena = SM64AP_BowserArenaIndex(level);
++    if (level == LEVEL_BITDW) arena = 0;
++    if (level == LEVEL_BITFS) arena = 1;
++    if (level == LEVEL_BITS) arena = 2;
++    return arena >= 0 ? sm64_bowser_hit_requirements[arena] : -1;
++}
++
+ static bool SM64AP_HaveOneUpForLocation(int locId) {
+     int offset = SM64AP_OneUpCheckOffsetFromLocationId(locId);
+     if (offset >= 0) {
+diff -ru sm64ex_orig/src/sm64ap.h sm64ex/src/sm64ap.h
+--- sm64ex_orig/src/sm64ap.h	2026-08-10 09:21:50.000000000 +0000
++++ sm64ex/src/sm64ap.h	2026-08-10 14:02:40.863513093 +0000
+@@ -437,6 +437,7 @@
+ AP_EXTERN_C const char *SM64AP_LevelOneUpUnlockName(s16, s16);
+ AP_EXTERN_C bool SM64AP_LevelOneUpUnlockEnabled(s16, s16);
+ AP_EXTERN_C int SM64AP_BowserArenaBombCount(s16);
++AP_EXTERN_C int SM64AP_BowserArenaHitCount(s16);
+ AP_EXTERN_C void SM64AP_SendBlocksanityCheck(s16, s16, s32, s16, s16, s16);
+ AP_EXTERN_C bool SM64AP_ShouldSpawnBowserStageOneUp(s16, s16, u32);
+ AP_EXTERN_C bool SM64AP_HaveKey1();

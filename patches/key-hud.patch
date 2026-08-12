@@ -1,0 +1,180 @@
+diff --git a/src/game/hud.c b/src/game/hud.c
+index 2554cd17..0e11c5cf 100644
+--- a/src/game/hud.c
++++ b/src/game/hud.c
+@@ -291,6 +291,29 @@ void render_hud_coins(void) {
+                        HUD_TOP_Y, "%d", gHudDisplay.coins);
+ }
+ 
++/**
++ * Renders a "Kx#" counter in the same HUD slot the coin counter uses.
++ * There's no dedicated key icon, so the 'K' letter glyph stands in for it.
++ * The count is how many of the AP castle-progression keys (first floor,
++ * basement, basement-star, upstairs, 50-star, 70-star) Mario currently
++ * holds. Only ever shown in place of the coin counter - see render_hud().
++ */
++void render_hud_key_counter(void) {
++    s16 i;
++    s16 keyCount = 0;
++
++    for (i = 0; i < SM64AP_NUM_CASTLE_KEYS; i++) {
++        if (SM64AP_HaveCastleKey(i)) {
++            keyCount++;
++        }
++    }
++
++    print_text(GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X), HUD_TOP_Y, "K"); // 'K' glyph substituting for the (nonexistent) key icon
++    print_text(GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X) + 16, HUD_TOP_Y, "*"); // 'X' glyph
++    print_text_fmt_int(GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X - 16) + 14,
++                       HUD_TOP_Y, "%d", keyCount);
++}
++
+ /**
+  * Renders the amount of stars collected.
+  * Disables "X" glyph when Mario has 100 stars or more.
+@@ -479,6 +502,11 @@ void render_hud(void) {
+             render_hud_coins();
+         }
+ 
++        if (!(hudDisplayFlags & HUD_DISPLAY_FLAG_COIN_COUNT) && configHUD) {
++            render_hud_key_counter();
++            render_hud_key_overlay();
++        }
++
+         if (hudDisplayFlags & HUD_DISPLAY_FLAG_STAR_COUNT && configHUD) {
+             render_hud_stars();
+         }
+diff --git a/src/game/ingame_menu.c b/src/game/ingame_menu.c
+index 00b9263f..aecba91c 100644
+--- a/src/game/ingame_menu.c
++++ b/src/game/ingame_menu.c
+@@ -3887,3 +3887,118 @@ s16 render_menus_and_dialogs() {
+     }
+     return mode;
+ }
++
++// Position/spacing for the "keys held" HUD overlay, drawn in the top-right
++// corner just below the Key Counter (which takes over the coin counter's
++// slot at GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X),
++// y=209/210, whenever HUD_DISPLAY_FLAG_COIN_COUNT is off).
++// print_generic_string() is left-aligned - it starts at the given x and
++// grows rightward per character - so lines are right-aligned here by
++// measuring each label with get_string_width() and offsetting its start x
++// so its right edge lands on HUD_KEYS_LIST_RIGHT_EDGE, keeping every line
++// flush with the Key Counter above it instead of a ragged right edge.
++#define HUD_KEYS_LIST_RIGHT_EDGE GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(20)
++#define HUD_KEYS_LIST_TOP_Y 190
++#define HUD_KEYS_LIST_LINE_HEIGHT 11
++
++struct HudKeyOverlayEntry {
++    s16 castleKeyIndex;
++    const u8 *label;
++};
++
++/**
++ * Draws one line of the HUD key-list with a small black drop shadow behind
++ * a white fill, matching the style used by the move rando HUD overlay
++ * (see render_hud_moves_list_line in the move-rando patch this was based on).
++ */
++static void render_hud_keys_list_line(s16 x, s16 y, const u8 *str) {
++    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 255);
++    print_generic_string(x + 1, y - 1, str);
++    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);
++    print_generic_string(x, y, str);
++}
++
++static const u8 sHudKeyLabelDarkWorld[] = {
++    ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('K'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelBasement[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('M'),
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelFireSea[] = {
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('E'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('A'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelSecondFloor[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelThirdFloor[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelStaircase[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('R'),
++    ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++
++// Ordered to match the castle's actual key progression: the "Dark World"
++// and "Fire Sea" entries are the first-floor and basement-star keys, named
++// for the Bowser fights that route you toward earning/using them.
++static const struct HudKeyOverlayEntry sHudKeyOverlayEntries[] = {
++    { SM64AP_CASTLE_KEY_FIRST_FLOOR,  sHudKeyLabelDarkWorld },
++    { SM64AP_CASTLE_KEY_BASEMENT,     sHudKeyLabelBasement },
++    { SM64AP_CASTLE_KEY_BASEMENT_STAR, sHudKeyLabelFireSea },
++    { SM64AP_CASTLE_KEY_UPSTAIRS,     sHudKeyLabelSecondFloor },
++    { SM64AP_CASTLE_KEY_50_STAR,      sHudKeyLabelThirdFloor },
++    { SM64AP_CASTLE_KEY_70_STAR,      sHudKeyLabelStaircase },
++};
++
++/**
++ * Renders a small live HUD overlay, below the Key Counter, listing every
++ * castle key Mario currently holds (Dark World / Basement / Fire Sea /
++ * Second Floor / Third Floor / Staircase Key), most-recently-obtainable
++ * order matching the castle's progression.
++ *
++ * Only shown once the player has picked up at least one of the "Dark World
++ * Key" (first floor key), "Progressive Basement Key" or "Progressive
++ * Upstairs Key" items - checked here via SM64AP_HaveCastleKey(), which also
++ * folds in the generic "Progressive Key" item, so having one of those shows
++ * the overlay too. Like the Key Counter, this is only ever rendered in
++ * place of the coin counter - see render_hud().
++ */
++void render_hud_key_overlay(void) {
++    s16 lineY;
++    u16 i;
++
++    bool haveAnyTriggerKey = SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_FIRST_FLOOR)
++                              || SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_BASEMENT)
++                              || SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_UPSTAIRS);
++
++    if (!haveAnyTriggerKey) {
++        return;
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
++
++    lineY = HUD_KEYS_LIST_TOP_Y;
++    for (i = 0; i < sizeof(sHudKeyOverlayEntries) / sizeof(sHudKeyOverlayEntries[0]); i++) {
++        const struct HudKeyOverlayEntry *entry = &sHudKeyOverlayEntries[i];
++
++        if (!SM64AP_HaveCastleKey(entry->castleKeyIndex)) {
++            continue;
++        }
++
++        render_hud_keys_list_line(HUD_KEYS_LIST_RIGHT_EDGE - get_string_width((u8 *) entry->label), lineY, entry->label);
++        lineY -= HUD_KEYS_LIST_LINE_HEIGHT;
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
++}
+diff --git a/src/game/ingame_menu.h b/src/game/ingame_menu.h
+index fb8570f5..106985e3 100644
+--- a/src/game/ingame_menu.h
++++ b/src/game/ingame_menu.h
+@@ -153,5 +153,6 @@ void render_digit(struct DialogEntry *dialog, s8 *linePos, int i);
+ #else
+ void render_digit(s8 *xMatrix, s16 *linePos, int i);
+ #endif
++void render_hud_key_overlay(void);
+ 
+ #endif // INGAME_MENU_H
