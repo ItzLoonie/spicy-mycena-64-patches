@@ -11,7 +11,7 @@ This patch just tells you how many hits Bowser takes in the Level Items screen.
 This patch disables Game Overs. (shocker, I know)
 
 > [!WARNING]
-> This patch will be deprecated for Spicy Mycena 64 v0.3.0, as lives will be disabled entirely.
+> This patch will be deprecated in Spicy Mycena 64 v0.3.0, as lives will be disabled entirely.
 
 ## Easy Airborne Coins
 This patch makes collecting coins and star secrets easier when flying with the Wing Cap or when being fired from a Cannon.
