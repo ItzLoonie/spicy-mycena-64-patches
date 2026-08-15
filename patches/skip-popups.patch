@@ -1,5 +1,5 @@
 diff --git a/src/game/behaviors/boo.inc.c b/src/game/behaviors/boo.inc.c
-index 2d0ec0e..f6c5a53 100644
+index 2d0ec0ec..f6c5a53d 100644
 --- a/src/game/behaviors/boo.inc.c
 +++ b/src/game/behaviors/boo.inc.c
 @@ -466,7 +466,8 @@ static void boo_act_4(void) {
@@ -13,7 +13,7 @@ index 2d0ec0e..f6c5a53 100644
          obj_mark_for_deletion(o);
  
 diff --git a/src/game/behaviors/bowser.inc.c b/src/game/behaviors/bowser.inc.c
-index 22bd51a..84a00b2 100644
+index 22bd51a2..84a00b2c 100644
 --- a/src/game/behaviors/bowser.inc.c
 +++ b/src/game/behaviors/bowser.inc.c
 @@ -791,8 +791,9 @@ void bowser_dead_bounce(void) {
@@ -59,7 +59,7 @@ index 22bd51a..84a00b2 100644
              sequence_player_unlower(SEQ_PLAYER_LEVEL, 60);
              sequence_player_fade_out(0, 1);
 diff --git a/src/game/behaviors/capswitch.inc.c b/src/game/behaviors/capswitch.inc.c
-index 18c15b9..87953c2 100644
+index 18c15b97..87953c25 100644
 --- a/src/game/behaviors/capswitch.inc.c
 +++ b/src/game/behaviors/capswitch.inc.c
 @@ -25,7 +25,6 @@ void cap_switch_act_1(void) {
@@ -85,7 +85,7 @@ index 18c15b9..87953c2 100644
  }
  
 diff --git a/src/game/behaviors/eyerok.inc.c b/src/game/behaviors/eyerok.inc.c
-index 25047fe..ca0265f 100644
+index 25047fee..ca0265f4 100644
 --- a/src/game/behaviors/eyerok.inc.c
 +++ b/src/game/behaviors/eyerok.inc.c
 @@ -63,9 +63,8 @@ static void eyerok_boss_act_wake_up(void) {
@@ -115,7 +115,7 @@ index 25047fe..ca0265f 100644
          stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
          obj_mark_for_deletion(o);
 diff --git a/src/game/behaviors/king_bobomb.inc.c b/src/game/behaviors/king_bobomb.inc.c
-index 7942b2b..3ea3837 100644
+index 7942b2bb..3ea38374 100644
 --- a/src/game/behaviors/king_bobomb.inc.c
 +++ b/src/game/behaviors/king_bobomb.inc.c
 @@ -35,7 +35,8 @@ void king_bobomb_act_0(void) {
@@ -151,7 +151,7 @@ index 7942b2b..3ea3837 100644
      }
  }
 diff --git a/src/game/behaviors/koopa.inc.c b/src/game/behaviors/koopa.inc.c
-index 2303906..3c134ec 100644
+index 2303906e..3c134ec0 100644
 --- a/src/game/behaviors/koopa.inc.c
 +++ b/src/game/behaviors/koopa.inc.c
 @@ -708,34 +708,20 @@ static void koopa_the_quick_act_after_race(void) {
@@ -198,7 +198,7 @@ index 2303906..3c134ec 100644
          spawn_default_star(sKoopaTheQuickProperties[o->oKoopaTheQuickRaceIndex].starPos[0],
                     sKoopaTheQuickProperties[o->oKoopaTheQuickRaceIndex].starPos[1],
 diff --git a/src/game/behaviors/racing_penguin.inc.c b/src/game/behaviors/racing_penguin.inc.c
-index 9649a3b..df83575 100644
+index 9649a3b1..df835753 100644
 --- a/src/game/behaviors/racing_penguin.inc.c
 +++ b/src/game/behaviors/racing_penguin.inc.c
 @@ -117,24 +117,20 @@ static void racing_penguin_act_finish_race(void) {
@@ -246,8 +246,155 @@ index 9649a3b..df83575 100644
      } else if (o->oRacingPenguinMarioWon) {
  #ifdef VERSION_JP
          spawn_default_star(-7339.0f, -5700.0f, -6774.0f);
+diff --git a/src/game/behaviors/sl_snowman_wind.inc.c b/src/game/behaviors/sl_snowman_wind.inc.c
+index 7d84258b..75542bdd 100644
+--- a/src/game/behaviors/sl_snowman_wind.inc.c
++++ b/src/game/behaviors/sl_snowman_wind.inc.c
+@@ -1,31 +1,14 @@
+ // sl_snowman_wind.c.inc
+ 
+ void bhv_sl_snowman_wind_loop(void) {
+-    UNUSED s32 unusedVar = 0;
+     s16 marioAngleFromWindSource;
+-    Vec3f tempPos;
+     
+     if (o->oTimer == 0)
+         o->oSLSnowmanWindOriginalYaw = o->oMoveAngleYaw;
+     
+-    // Waiting for Mario to approach.
+-    if (o->oSubAction == SL_SNOWMAN_WIND_ACT_IDLE) {
+-        o->oDistanceToMario = 0;
+-        
+-        // Check if Mario is within 1000 units of the center of the bridge, and ready to speak.
+-        vec3f_copy_2(tempPos, &o->oPosX);
+-        obj_set_pos(o, 1100, 3328, 1164); // Position is in the middle of the ice bridge
+-        if (cur_obj_can_mario_activate_textbox(1000.0f, 30.0f, 0x7FFF))
+-            o->oSubAction++;
+-        vec3f_copy_2(&o->oPosX, tempPos);
+-        
+-    // Mario has come close, begin dialog.
+-    } else if (o->oSubAction == SL_SNOWMAN_WIND_ACT_TALKING) {
+-        if (cur_obj_update_dialog(2, 2, DIALOG_153, 0))
+-            o->oSubAction++;
+-        
+-    // Blowing, spawn wind particles (SL_SNOWMAN_WIND_ACT_BLOWING)
+-    } else if (o->oDistanceToMario < 1500.0f && absf(gMarioObject->oPosY - o->oHomeY) < 500.0f) {
++    // Skip waiting for Mario to approach and the dialog entirely - immediately
++    // begin blowing wind (SL_SNOWMAN_WIND_ACT_BLOWING behavior).
++    if (o->oDistanceToMario < 1500.0f && absf(gMarioObject->oPosY - o->oHomeY) < 500.0f) {
+         // Point towards Mario, but only within 0x1500 angle units of the original angle.
+         if ((marioAngleFromWindSource = o->oAngleToMario - o->oSLSnowmanWindOriginalYaw) > 0) {
+             if (marioAngleFromWindSource < 0x1500)
+diff --git a/src/game/behaviors/snowman.inc.c b/src/game/behaviors/snowman.inc.c
+index ff539b2d..4791bdfd 100644
+--- a/src/game/behaviors/snowman.inc.c
++++ b/src/game/behaviors/snowman.inc.c
+@@ -119,18 +119,13 @@ void snowmans_bottom_act_3(void) {
+ }
+ 
+ void bhv_snowmans_bottom_loop(void) {
+-    s16 sp1E;
+-
+     switch (o->oAction) {
+         case 0:
+-            if (is_point_within_radius_of_mario(o->oPosX, o->oPosY, o->oPosZ, 400) == 1
+-                && set_mario_npc_dialog(1) == 2) {
+-                sp1E = cutscene_object_with_dialog(CUTSCENE_DIALOG, o, DIALOG_110);
+-                if (sp1E) {
+-                    o->oForwardVel = 10.0f;
+-                    o->oAction = 1;
+-                    set_mario_npc_dialog(0);
+-                }
++            // Keep the radius check, but skip the "I need a good head" dialog
++            // it used to gate - start rolling as soon as Mario is close.
++            if (is_point_within_radius_of_mario(o->oPosX, o->oPosY, o->oPosZ, 400) == 1) {
++                o->oForwardVel = 10.0f;
++                o->oAction = 1;
+             }
+             break;
+ 
+@@ -175,8 +170,9 @@ void bhv_snowmans_head_loop(void) {
+ 
+     switch (o->oAction) {
+         case 0:
+-            if (trigger_obj_dialog_when_facing(&o->oSnowmansHeadUnkF4, DIALOG_109, 400.0f, 1))
+-                o->oAction = 1;
++            // Skip the "out-of-body experience" dialog and its radius check -
++            // move on immediately regardless of Mario's position.
++            o->oAction = 1;
+             break;
+ 
+         case 1:
+@@ -199,11 +195,11 @@ void bhv_snowmans_head_loop(void) {
+             break;
+ 
+         case 4:
+-            if (trigger_obj_dialog_when_facing(&o->oSnowmansHeadUnkF4, DIALOG_111, 700.0f, 2)) {
+-                spawn_mist_particles();
+-                spawn_default_star(-4700.0f, -1024.0f, 1890.0f);
+-                o->oAction = 1;
+-            }
++            // Skip the "perfect new body" dialog and its radius check -
++            // spawn the star immediately regardless of Mario's position.
++            spawn_mist_particles();
++            spawn_default_star(-4700.0f, -1024.0f, 1890.0f);
++            o->oAction = 1;
+             break;
+     }
+ 
+diff --git a/src/game/behaviors/tuxie.inc.c b/src/game/behaviors/tuxie.inc.c
+index 1dae5850..320204d1 100644
+--- a/src/game/behaviors/tuxie.inc.c
++++ b/src/game/behaviors/tuxie.inc.c
+@@ -43,24 +43,19 @@ void tuxies_mother_act_2(void) {
+ void tuxies_mother_act_1(void) {
+     s32 sp2C;
+     s32 sp28;
+-    s32 dialogID;
+     switch (o->oSubAction) {
+         case 0:
+             cur_obj_init_animation_with_sound(3);
+             if (!cur_obj_is_mario_on_platform()) {
+                 sp2C = (o->oBehParams >> 0x10) & 0xFF;
+                 sp28 = (o->prevObj->oBehParams >> 0x10) & 0xFF;
++                // Skip the "right baby" / "wrong baby" dialog - resolve which
++                // baby Mario brought immediately instead of waiting on a textbox.
+                 if (sp2C == sp28)
+-                    dialogID = DIALOG_058;
++                    o->oSubAction = 1;
+                 else
+-                    dialogID = DIALOG_059;
+-                if (cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, dialogID)) {
+-                    if (dialogID == DIALOG_058)
+-                        o->oSubAction = 1;
+-                    else
+-                        o->oSubAction = 2;
+-                    o->prevObj->oInteractionSubtype |= INT_SUBTYPE_DROP_IMMEDIATELY;
+-                }
++                    o->oSubAction = 2;
++                o->prevObj->oInteractionSubtype |= INT_SUBTYPE_DROP_IMMEDIATELY;
+             } else
+                 cur_obj_init_animation_with_sound(0);
+             break;
+@@ -112,13 +107,11 @@ void tuxies_mother_act_0(void) {
+     } else {
+         switch (o->oSubAction) {
+             case 0:
++                // Keep the radius check, but skip the "please find my baby"
++                // dialog it used to gate - go straight to the waiting state.
+                 if (cur_obj_can_mario_activate_textbox_2(300.0f, 100.0f))
+                     if (sp2C == 0)
+-                        o->oSubAction++;
+-                break;
+-            case 1:
+-                if (cur_obj_update_dialog_with_cutscene(2, 1, CUTSCENE_DIALOG, DIALOG_057))
+-                    o->oSubAction++;
++                        o->oSubAction = 2;
+                 break;
+             case 2:
+                 if (o->oDistanceToMario > 450.0f)
 diff --git a/src/game/behaviors/whomp.inc.c b/src/game/behaviors/whomp.inc.c
-index 7d6b88e..361e39e 100644
+index 7d6b88e4..361e39e1 100644
 --- a/src/game/behaviors/whomp.inc.c
 +++ b/src/game/behaviors/whomp.inc.c
 @@ -28,7 +28,8 @@ void whomp_act_0(void) {
@@ -271,7 +418,7 @@ index 7d6b88e..361e39e 100644
              cur_obj_hide();
              cur_obj_become_intangible();
 diff --git a/src/game/behaviors/wiggler.inc.c b/src/game/behaviors/wiggler.inc.c
-index 4c465f8..1708a08 100644
+index 4c465f80..1708a08b 100644
 --- a/src/game/behaviors/wiggler.inc.c
 +++ b/src/game/behaviors/wiggler.inc.c
 @@ -219,18 +219,9 @@ static void wiggler_act_walk(void) {
@@ -321,7 +468,7 @@ index 4c465f8..1708a08 100644
                  // defeated, we leave its health at 1
                  if (--o->oHealth == 1) {
 diff --git a/src/game/camera.c b/src/game/camera.c
-index 81d3527..a5aa2e1 100644
+index 81d35278..a5aa2e1e 100644
 --- a/src/game/camera.c
 +++ b/src/game/camera.c
 @@ -8223,12 +8223,10 @@ BAD_RETURN(s32) bowser_fight_intro_dialog(UNUSED struct Camera *c) {
@@ -342,7 +489,7 @@ index 81d3527..a5aa2e1 100644
  
  /**
 diff --git a/src/game/level_update.c b/src/game/level_update.c
-index 09034cd..1f7e16b 100644
+index 09034cd9..1f7e16b5 100644
 --- a/src/game/level_update.c
 +++ b/src/game/level_update.c
 @@ -247,7 +247,12 @@ void fade_into_special_warp(u32 arg, u32 color) {
@@ -368,7 +515,7 @@ index 09034cd..1f7e16b 100644
  
  void init_door_warp(struct SpawnInfo *spawnInfo, u32 arg1) {
 diff --git a/src/game/obj_behaviors_2.c b/src/game/obj_behaviors_2.c
-index 165fc36..a53007e 100644
+index 165fc366..a53007e0 100644
 --- a/src/game/obj_behaviors_2.c
 +++ b/src/game/obj_behaviors_2.c
 @@ -91,22 +91,13 @@ static s16 obj_get_pitch_from_vel(void) {
