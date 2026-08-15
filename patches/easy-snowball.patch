@@ -1,0 +1,37 @@
+diff --git a/src/game/behaviors/snowman.inc.c b/src/game/behaviors/snowman.inc.c
+index ff539b2d..6340bb0a 100644
+--- a/src/game/behaviors/snowman.inc.c
++++ b/src/game/behaviors/snowman.inc.c
+@@ -53,7 +53,6 @@ void adjust_rolling_face_pitch(f32 f12) {
+ void snowmans_bottom_act_1(void) {
+     UNUSED s16 sp26;
+     s32 sp20;
+-    UNUSED s16 sp1E;
+ 
+     o->oPathedStartWaypoint = segmented_to_virtual(&ccm_seg7_trajectory_snowman);
+     sp26 = object_step_without_floor_orient();
+@@ -65,12 +64,11 @@ void snowmans_bottom_act_1(void) {
+         o->oForwardVel = 70.0f;
+ 
+     if (sp20 == -1) {
+-        sp1E = (u16) o->oAngleToMario - (u16) o->oMoveAngleYaw;
+-        if (obj_check_if_facing_toward_angle(o->oMoveAngleYaw, o->oAngleToMario, 0x2000) == 1 && o->oSnowmansBottomUnk1AC == 1) {
+-            o->oSnowmansBottomUnkF8 = o->oAngleToMario;
+-        } else {
+-            o->oSnowmansBottomUnkF8 = o->oMoveAngleYaw;
+-        }
++        // Always aim straight at the snowman body's docking point
++        // (the same coordinates used to detect arrival in act 2) so the
++        // snowball reliably rolls home, regardless of where Mario is
++        // standing or whether he triggered the body checkpoint.
++        o->oSnowmansBottomUnkF8 = atan2s(1813.0f - o->oPosZ, -4230.0f - o->oPosX);
+         o->oAction = 2;
+     }
+ }
+@@ -218,4 +216,4 @@ void bhv_snowmans_body_checkpoint_loop(void) {
+ 
+     if (o->parentObj->activeFlags == ACTIVE_FLAG_DEACTIVATED)
+         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
+-}
++}
+\ No newline at end of file
