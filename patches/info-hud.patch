@@ -1,0 +1,412 @@
+diff --git a/src/game/hud.c b/src/game/hud.c
+index 2554cd1..5fad6c1 100644
+--- a/src/game/hud.c
++++ b/src/game/hud.c
+@@ -291,6 +291,29 @@ void render_hud_coins(void) {
+                        HUD_TOP_Y, "%d", gHudDisplay.coins);
+ }
+ 
++/**
++ * Renders a "Kx#" counter in the same HUD slot the coin counter uses.
++ * There's no dedicated key icon, so the 'K' letter glyph stands in for it.
++ * The count is how many of the AP castle-progression keys (first floor,
++ * basement, basement-star, upstairs, 50-star, 70-star) Mario currently
++ * holds. Only ever shown in place of the coin counter - see render_hud().
++ */
++void render_hud_key_counter(void) {
++    s16 i;
++    s16 keyCount = 0;
++
++    for (i = 0; i < SM64AP_NUM_CASTLE_KEYS; i++) {
++        if (SM64AP_HaveCastleKey(i)) {
++            keyCount++;
++        }
++    }
++
++    print_text(GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X), HUD_TOP_Y, "K"); // 'K' glyph substituting for the (nonexistent) key icon
++    print_text(GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X) + 16, HUD_TOP_Y, "*"); // 'X' glyph
++    print_text_fmt_int(GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X - 16) + 14,
++                       HUD_TOP_Y, "%d", keyCount);
++}
++
+ /**
+  * Renders the amount of stars collected.
+  * Disables "X" glyph when Mario has 100 stars or more.
+@@ -479,6 +502,17 @@ void render_hud(void) {
+             render_hud_coins();
+         }
+ 
++        // Both info-HUD overlays (available moves / castle keys) live here,
++        // right after the coin counter, so they're rendered together.
++        if (configHUD) {
++            render_hud_available_moves();
++        }
++
++        if (!(hudDisplayFlags & HUD_DISPLAY_FLAG_COIN_COUNT) && configHUD) {
++            render_hud_key_counter();
++            render_hud_key_overlay();
++        }
++
+         if (hudDisplayFlags & HUD_DISPLAY_FLAG_STAR_COUNT && configHUD) {
+             render_hud_stars();
+         }
+diff --git a/src/game/ingame_menu.c b/src/game/ingame_menu.c
+index 00b9263..2b4dca2 100644
+--- a/src/game/ingame_menu.c
++++ b/src/game/ingame_menu.c
+@@ -3887,3 +3887,241 @@ s16 render_menus_and_dialogs() {
+     }
+     return mode;
+ }
++
++// Position/spacing for the live "available moves" HUD overlay, drawn in
++// the top-left corner of the HUD.
++#define HUD_MOVES_LIST_X GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(6)
++#define HUD_MOVES_LIST_TOP_Y 190
++#define HUD_MOVES_LIST_LINE_HEIGHT 11
++#define HUD_MOVES_LIST_WIDTH 200
++
++/**
++ * Draws one line of the HUD move-list with a small black drop shadow
++ * behind a fill color, matching the readable text style used by the
++ * pause/options menus (see optmenu_draw_text_left).
++ */
++static void render_hud_moves_list_line_colored(s16 x, s16 y, const u8 *str, u8 r, u8 g, u8 b) {
++    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 255);
++    print_generic_string(x + 1, y - 1, str);
++    gDPSetEnvColor(gDisplayListHead++, r, g, b, 255);
++    print_generic_string(x, y, str);
++}
++
++static void render_hud_moves_list_line(s16 x, s16 y, const u8 *str) {
++    render_hud_moves_list_line_colored(x, y, str, 255, 255, 255);
++}
++
++/**
++ * Renders a small live HUD overlay, in the top-left corner, listing
++ * every move currently unlocked for the course Mario is standing in
++ * (using the same move-area/unlock logic as the pause menu's unlock
++ * screen), followed by any level-locked cap (Wing/Metal/Vanish) that's
++ * been unlocked for this course. Intended for move-randomizer seeds so
++ * the player always has an at-a-glance reminder of what they can
++ * currently do here.
++ *
++ * Caps share the same list instead of getting their own header/section:
++ * most courses have zero or one relevant cap, so this keeps the overlay
++ * about as short as the move-only version and only grows it on the
++ * handful of courses (DDD, WDW) that gate two caps at once.
++ *
++ * The overlay is skipped entirely when the current seed doesn't
++ * randomize moves (SM64AP_MoveRandoEnabled() is false), since in that
++ * case every move is always available and the list would be pointless
++ * clutter. It re-evaluates every frame, so it updates live as soon as
++ * a move or cap unlock is received or the player changes courses.
++ */
++void render_hud_available_moves(void) {
++    static const u8 textMovesHeader[] = {
++        ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('L'),
++        ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('E'),
++        ASCII_TO_DIALOG('S'), DIALOG_CHAR_TERMINATOR
++    };
++    // Cap flag values follow the existing SM64AP convention used elsewhere
++    // in this file (see the debug menu's SM64AP_HaveGlobalCap(2/4/8) calls):
++    // 2 = Wing Cap, 4 = Metal Cap, 8 = Vanish Cap.
++    static const u8 *const capLabels[3] = { sUnlockWing, sUnlockMetal, sUnlockVanish };
++    static const int capFlags[3] = { 2, 4, 8 };
++    s16 moveArea;
++    s16 lineY;
++    s16 movesShown = 0;
++    u16 i;
++
++    if (!SM64AP_MoveRandoEnabled()) {
++        return;
++    }
++
++    moveArea = SM64AP_LevelMoveAreaForLevel(gCurrLevelNum);
++    if (moveArea < 0) {
++        return;
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
++
++    render_hud_moves_list_line_colored(HUD_MOVES_LIST_X, HUD_MOVES_LIST_TOP_Y, textMovesHeader, 255, 220, 80);
++    lineY = HUD_MOVES_LIST_TOP_Y - HUD_MOVES_LIST_LINE_HEIGHT;
++
++    for (i = 0; i < sizeof(sPauseMoveUnlocks) / sizeof(sPauseMoveUnlocks[0]); i++) {
++        const struct PauseMoveUnlock *unlock = &sPauseMoveUnlocks[i];
++        const u8 *label = unlock->label;
++        bool unlocked = SM64AP_HaveLevelMoveOrGlobal(moveArea, unlock->move);
++        bool notApplicable = moveArea == SM64AP_LEVEL_MOVE_AREA_BBH
++                              && unlock->move == SM64AP_LEVEL_MOVE_CLIMB;
++
++        if (unlock->move == SM64AP_LEVEL_MOVE_TRIPLE_JUMP && !unlocked
++            && SM64AP_CanDoubleJumpForArea(moveArea)) {
++            label = sMoveDouble;
++            unlocked = true;
++        }
++
++        if (!unlocked || notApplicable) {
++            continue;
++        }
++
++        render_hud_moves_list_line(HUD_MOVES_LIST_X, lineY, label);
++        lineY -= HUD_MOVES_LIST_LINE_HEIGHT;
++        movesShown++;
++    }
++
++    // Append any caps unlocked for this course to the same list, rather
++    // than giving them their own header - most courses have zero or one
++    // level-locked cap (DDD and WDW are the only two with both a metal
++    // and a vanish unlock), so this only grows the overlay when there's
++    // actually something new to report.
++    for (i = 0; i < 3; i++) {
++        int capId = SM64AP_LevelCapForLevel(gCurrLevelNum, capFlags[i]);
++
++        if (capId < 0 || !SM64AP_HaveLevelCapOrGlobal(capId)) {
++            continue;
++        }
++
++        render_hud_moves_list_line_colored(HUD_MOVES_LIST_X, lineY, capLabels[i], 150, 200, 255);
++        lineY -= HUD_MOVES_LIST_LINE_HEIGHT;
++        movesShown++;
++    }
++
++    if (movesShown == 0) {
++        static const u8 textNoMoves[] = {
++            ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('O'),
++            ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('E'), DIALOG_CHAR_TERMINATOR
++        };
++        render_hud_moves_list_line_colored(HUD_MOVES_LIST_X, lineY, textNoMoves, 150, 150, 150);
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
++}
++
++// Position/spacing for the "keys held" HUD overlay, drawn in the top-right
++// corner just below the Key Counter (which takes over the coin counter's
++// slot at GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(HUD_TOP_RIGHT_COUNTER_X),
++// y=209/210, whenever HUD_DISPLAY_FLAG_COIN_COUNT is off).
++// print_generic_string() is left-aligned - it starts at the given x and
++// grows rightward per character - so lines are right-aligned here by
++// measuring each label with get_string_width() and offsetting its start x
++// so its right edge lands on HUD_KEYS_LIST_RIGHT_EDGE, keeping every line
++// flush with the Key Counter above it instead of a ragged right edge.
++#define HUD_KEYS_LIST_RIGHT_EDGE GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(20)
++#define HUD_KEYS_LIST_TOP_Y 190
++#define HUD_KEYS_LIST_LINE_HEIGHT 11
++
++struct HudKeyOverlayEntry {
++    s16 castleKeyIndex;
++    const u8 *label;
++};
++
++/**
++ * Draws one line of the HUD key-list with a small black drop shadow behind
++ * a white fill, matching the style used by the move rando HUD overlay
++ * (see render_hud_moves_list_line above).
++ */
++static void render_hud_keys_list_line(s16 x, s16 y, const u8 *str) {
++    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 255);
++    print_generic_string(x + 1, y - 1, str);
++    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);
++    print_generic_string(x, y, str);
++}
++
++static const u8 sHudKeyLabelDarkWorld[] = {
++    ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('K'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelBasement[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('M'),
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelFireSea[] = {
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('E'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('A'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelSecondFloor[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelThirdFloor[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sHudKeyLabelStaircase[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('R'),
++    ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('E'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('K'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('Y'), DIALOG_CHAR_TERMINATOR
++};
++
++// Ordered to match the castle's actual key progression: the "Dark World"
++// and "Fire Sea" entries are the first-floor and basement-star keys, named
++// for the Bowser fights that route you toward earning/using them.
++static const struct HudKeyOverlayEntry sHudKeyOverlayEntries[] = {
++    { SM64AP_CASTLE_KEY_FIRST_FLOOR,  sHudKeyLabelDarkWorld },
++    { SM64AP_CASTLE_KEY_BASEMENT,     sHudKeyLabelBasement },
++    { SM64AP_CASTLE_KEY_BASEMENT_STAR, sHudKeyLabelFireSea },
++    { SM64AP_CASTLE_KEY_UPSTAIRS,     sHudKeyLabelSecondFloor },
++    { SM64AP_CASTLE_KEY_50_STAR,      sHudKeyLabelThirdFloor },
++    { SM64AP_CASTLE_KEY_70_STAR,      sHudKeyLabelStaircase },
++};
++
++/**
++ * Renders a small live HUD overlay, below the Key Counter, listing every
++ * castle key Mario currently holds (Dark World / Basement / Fire Sea /
++ * Second Floor / Third Floor / Staircase Key), most-recently-obtainable
++ * order matching the castle's progression.
++ *
++ * Only shown once the player has picked up at least one of the "Dark World
++ * Key" (first floor key), "Progressive Basement Key" or "Progressive
++ * Upstairs Key" items - checked here via SM64AP_HaveCastleKey(), which also
++ * folds in the generic "Progressive Key" item, so having one of those shows
++ * the overlay too. Like the Key Counter, this is only ever rendered in
++ * place of the coin counter - see render_hud().
++ */
++void render_hud_key_overlay(void) {
++    s16 lineY;
++    u16 i;
++
++    bool haveAnyTriggerKey = SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_FIRST_FLOOR)
++                              || SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_BASEMENT)
++                              || SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_UPSTAIRS);
++
++    if (!haveAnyTriggerKey) {
++        return;
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
++
++    lineY = HUD_KEYS_LIST_TOP_Y;
++    for (i = 0; i < sizeof(sHudKeyOverlayEntries) / sizeof(sHudKeyOverlayEntries[0]); i++) {
++        const struct HudKeyOverlayEntry *entry = &sHudKeyOverlayEntries[i];
++
++        if (!SM64AP_HaveCastleKey(entry->castleKeyIndex)) {
++            continue;
++        }
++
++        render_hud_keys_list_line(HUD_KEYS_LIST_RIGHT_EDGE - get_string_width((u8 *) entry->label), lineY, entry->label);
++        lineY -= HUD_KEYS_LIST_LINE_HEIGHT;
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
++}
+diff --git a/src/game/ingame_menu.h b/src/game/ingame_menu.h
+index fb8570f..185130c 100644
+--- a/src/game/ingame_menu.h
++++ b/src/game/ingame_menu.h
+@@ -153,5 +153,7 @@ void render_digit(struct DialogEntry *dialog, s8 *linePos, int i);
+ #else
+ void render_digit(s8 *xMatrix, s16 *linePos, int i);
+ #endif
++void render_hud_available_moves(void);
++void render_hud_key_overlay(void);
+ 
+ #endif // INGAME_MENU_H
+diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
+index 5897a4a..b366e8c 100644
+--- a/src/sm64ap.cpp
++++ b/src/sm64ap.cpp
+@@ -156,6 +156,10 @@ bool sm64_have_painting[NUM_PAINTING_LOCKS];
+ bool sm64_have_thi_tiny_painting = false;
+ int sm64_completion_type = 0;
+ std::bitset<SM64AP_NUM_ABILITIES> sm64_have_abilities;
++// Tracks whether the current slot actually randomizes moves (i.e. the seed's
++// MoveRandoVec had any bits set). Used to hide the "available moves" HUD
++// overlay entirely when move rando isn't part of this seed.
++static bool sm64_move_rando_enabled = false;
+ std::bitset<SM64AP_NUM_LEVEL_MOVE_AREAS * SM64AP_NUM_LEVEL_MOVES> sm64_have_level_moves;
+ std::bitset<SM64AP_NUM_FEATURES> sm64_have_features;
+ std::bitset<SM64AP_NUM_LEVEL_CAPS> sm64_have_level_caps;
+@@ -2648,10 +2652,17 @@ static void SM64AP_SetMarioColors(std::string rawColors) {
+ }
+ 
+ void SM64AP_SetMoveRandoVec(int vec) {
++    if (vec != 0) {
++        sm64_move_rando_enabled = true;
++    }
+     for (int i = 1; i < SM64AP_NUM_ABILITIES; i++) { // Start at 1, DJ bit is unnecessary
+         sm64_have_abilities[i] = !std::bitset<SM64AP_NUM_ABILITIES>(vec).test(i) || sm64_have_abilities[i];
+     }
+ }
++
++bool SM64AP_MoveRandoEnabled() {
++    return sm64_move_rando_enabled;
++}
+ void SM64AP_ResetItems() {
+     {
+         std::lock_guard<std::mutex> lock(sm64_permanent_coin_mutex);
+@@ -2674,6 +2685,7 @@ void SM64AP_ResetItems() {
+         sm64_have_painting[i] = false;
+     }
+     sm64_have_thi_tiny_painting = false;
++    sm64_move_rando_enabled = false;
+     sm64_have_abilities.reset();
+     sm64_have_level_moves.reset();
+     sm64_have_features.reset();
+@@ -3626,10 +3638,10 @@ bool SM64AP_HaveLevelCapOrGlobal(int cap) {
+     return false;
+ }
+ 
+-static int SM64AP_LevelCapForCurrentLevel(int flag) {
++int SM64AP_LevelCapForLevel(s16 level, int flag) {
+     switch (flag) {
+         case 2:
+-            switch (gCurrLevelNum) {
++            switch (level) {
+                 case LEVEL_BOB:
+                     return SM64AP_LEVEL_CAP_BOB_WING;
+                 case LEVEL_CASTLE_GROUNDS:
+@@ -3645,7 +3657,7 @@ static int SM64AP_LevelCapForCurrentLevel(int flag) {
+             }
+             break;
+         case 4:
+-            switch (gCurrLevelNum) {
++            switch (level) {
+                 case LEVEL_WF:
+                     return SM64AP_LEVEL_CAP_WF_METAL;
+                 case LEVEL_JRB:
+@@ -3663,7 +3675,7 @@ static int SM64AP_LevelCapForCurrentLevel(int flag) {
+             }
+             break;
+         case 8:
+-            switch (gCurrLevelNum) {
++            switch (level) {
+                 case LEVEL_BBH:
+                     return SM64AP_LEVEL_CAP_BBH_VANISH;
+                 case LEVEL_DDD:
+@@ -3705,11 +3717,11 @@ static int SM64AP_CountLevelCapRange(int first, int last) {
+ bool SM64AP_HaveCap(int flag) {
+     switch (flag) {
+         case 2:
+-            return sm64_have_wingcap || SM64AP_HaveLevelCap(SM64AP_LevelCapForCurrentLevel(flag));
++            return sm64_have_wingcap || SM64AP_HaveLevelCap(SM64AP_LevelCapForLevel(gCurrLevelNum, flag));
+         case 4:
+-            return sm64_have_metalcap || SM64AP_HaveLevelCap(SM64AP_LevelCapForCurrentLevel(flag));
++            return sm64_have_metalcap || SM64AP_HaveLevelCap(SM64AP_LevelCapForLevel(gCurrLevelNum, flag));
+         case 8:
+-            return sm64_have_vanishcap || SM64AP_HaveLevelCap(SM64AP_LevelCapForCurrentLevel(flag));
++            return sm64_have_vanishcap || SM64AP_HaveLevelCap(SM64AP_LevelCapForLevel(gCurrLevelNum, flag));
+         default:
+             //Probably coin/1up or something
+             return true;
+diff --git a/src/sm64ap.h b/src/sm64ap.h
+index b41b59c..4e3794d 100644
+--- a/src/sm64ap.h
++++ b/src/sm64ap.h
+@@ -474,8 +474,10 @@ AP_EXTERN_C int SM64AP_LevelCoinUnlockCount(s16, bool);
+ AP_EXTERN_C const char *SM64AP_LevelCoinUnlockName(s16, bool, int);
+ AP_EXTERN_C bool SM64AP_LevelCoinUnlockEnabled(s16, bool, int);
+ AP_EXTERN_C bool SM64AP_HaveLevelCapOrGlobal(int);
++AP_EXTERN_C int SM64AP_LevelCapForLevel(s16, int);
+ AP_EXTERN_C int SM64AP_LevelMoveAreaForLevel(s16);
+ AP_EXTERN_C bool SM64AP_HaveLevelMoveOrGlobal(int, int);
++AP_EXTERN_C bool SM64AP_MoveRandoEnabled(void);
+ AP_EXTERN_C bool SM64AP_CollectedCourseStar(int, int);
+ AP_EXTERN_C u32 SM64AP_ServerSaveFlags();
+ AP_EXTERN_C void SM64AP_SetServerSaveFlags(u32);

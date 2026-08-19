@@ -1,0 +1,108 @@
+diff -ruN '--exclude=.git' sm64ex_orig/src/game/level_update.c sm64ex/src/game/level_update.c
+--- sm64ex_orig/src/game/level_update.c	2026-08-15 07:14:40.000000000 +0000
++++ sm64ex/src/game/level_update.c	2026-08-15 19:55:01.887420746 +0000
+@@ -832,6 +832,7 @@
+                 }
+                 sDelayedWarpTimer = 48;
+                 sSourceWarpNodeId = WARP_NODE_DEATH;
++                mario_clear_cap_power_on_next_spawn();
+                 play_transition(WARP_TRANSITION_FADE_INTO_BOWSER, 0x30, 0x00, 0x00, 0x00);
+                 play_sound(SOUND_MENU_BOWSER_LAUGH, gDefaultSoundArgs);
+                 break;
+diff -ruN '--exclude=.git' sm64ex_orig/src/game/mario.c sm64ex/src/game/mario.c
+--- sm64ex_orig/src/game/mario.c	2026-07-18 07:27:44.000000000 +0000
++++ sm64ex/src/game/mario.c	2026-08-15 19:54:49.632115330 +0000
+@@ -1610,6 +1610,16 @@
+ u64 sCapFlickerFrames = 0x4444449249255555;
+ 
+ /**
++ * Persistent cap powers: while Mario is in one of the Castle hub levels
++ * (inside, main map/grounds, or courtyard), the cap timer is paused so it
++ * never runs out just from wandering the hub between courses.
++ */
++static s32 mario_is_in_castle_hub(void) {
++    return (gCurrLevelNum == LEVEL_CASTLE || gCurrLevelNum == LEVEL_CASTLE_GROUNDS
++            || gCurrLevelNum == LEVEL_CASTLE_COURTYARD);
++}
++
++/**
+  * Updates the cap flags mainly based on the cap timer.
+  */
+ u32 update_and_return_cap_flags(struct MarioState *m) {
+@@ -1619,9 +1629,10 @@
+     if (m->capTimer > 0) {
+         action = m->action;
+ 
+-        if ((m->capTimer <= 60)
+-            || ((action != ACT_READING_AUTOMATIC_DIALOG) && (action != ACT_READING_NPC_DIALOG)
+-                && (action != ACT_READING_SIGN) && (action != ACT_IN_CANNON))) {
++        if (!mario_is_in_castle_hub()
++            && ((m->capTimer <= 60)
++                || ((action != ACT_READING_AUTOMATIC_DIALOG) && (action != ACT_READING_NPC_DIALOG)
++                    && (action != ACT_READING_SIGN) && (action != ACT_IN_CANNON)))) {
+             m->capTimer -= 1;
+         }
+ 
+@@ -1897,9 +1908,28 @@
+  *                  INITIALIZATION                *
+  **************************************************/
+ 
++/**
++ * Persistent cap powers: normally init_mario() would wipe out any active
++ * Metal/Wing/Vanish Cap and its timer on every respawn, including simple
++ * area transitions, warps, and Exit Course. Set this flag (via
++ * mario_clear_cap_power_on_next_spawn()) right before a respawn that should
++ * still wipe the cap power, i.e. dying. It's consumed and reset the next
++ * time init_mario() runs.
++ */
++static u32 sMarioClearCapPowerOnSpawn = FALSE;
++
++void mario_clear_cap_power_on_next_spawn(void) {
++    sMarioClearCapPowerOnSpawn = TRUE;
++}
++
+ void init_mario(void) {
+     Vec3s capPos;
+     struct Object *capObject;
++    u32 prevCapPowerFlags = gMarioState->flags & (MARIO_VANISH_CAP | MARIO_METAL_CAP | MARIO_WING_CAP);
++    u16 prevCapTimer = gMarioState->capTimer;
++    u32 clearCapPower = sMarioClearCapPowerOnSpawn;
++
++    sMarioClearCapPowerOnSpawn = FALSE;
+ 
+     unused80339F10 = 0;
+ 
+@@ -1934,13 +1964,22 @@
+         gMarioState->flags = (MARIO_CAP_ON_HEAD | MARIO_NORMAL_CAP);
+     }
+ 
++    // Carry the active cap power (and its remaining timer) over from before
++    // this spawn, as long as we're not deliberately clearing it (death) and
++    // Mario is still wearing some cap at all (not stolen, hat item owned).
++    if (!clearCapPower && (gMarioState->flags & MARIO_CAP_ON_HEAD) && prevCapTimer > 0) {
++        gMarioState->flags |= prevCapPowerFlags;
++    } else {
++        prevCapTimer = 0;
++    }
++
+     gMarioState->forwardVel = 0.0f;
+     gMarioState->squishTimer = 0;
+ 
+     gMarioState->hurtCounter = 0;
+     gMarioState->healCounter = 0;
+ 
+-    gMarioState->capTimer = 0;
++    gMarioState->capTimer = prevCapTimer;
+     gMarioState->quicksandDepth = 0.0f;
+ 
+     gMarioState->heldObj = NULL;
+diff -ruN '--exclude=.git' sm64ex_orig/src/game/mario.h sm64ex/src/game/mario.h
+--- sm64ex_orig/src/game/mario.h	2026-07-15 18:57:12.000000000 +0000
++++ sm64ex/src/game/mario.h	2026-08-15 19:54:54.189757967 +0000
+@@ -50,5 +50,6 @@
+ s32 execute_mario_action(UNUSED struct Object *o);
+ void init_mario(void);
+ void init_mario_from_save_file(void);
++void mario_clear_cap_power_on_next_spawn(void);
+ 
+ #endif // MARIO_H

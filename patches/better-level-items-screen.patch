@@ -1,0 +1,63 @@
+diff --git a/src/game/ingame_menu.c b/src/game/ingame_menu.c
+--- a/src/game/ingame_menu.c
++++ b/src/game/ingame_menu.c
+@@ -2924,12 +2924,24 @@
+     return false;
+ }
+ 
+-static void render_pause_unlock_status(s16 x, s16 y, s16 statusX, const u8 *label, bool unlocked) {
+-    static const u8 textYes[] = { TEXT_PAINTING_Y };
+-    static const u8 textNo[] = { TEXT_PAINTING_N };
++/**
++ * Prints a Level Items screen entry's label at the given unlocked/active
++ * state: full white when true (or nonzero, for numeric entries), dim gray
++ * when false (or zero). This is the single place that decides that color,
++ * so every entry on the screen - boolean or numeric - goes through it.
++ */
++static void render_pause_unlock_text(s16 x, s16 y, const u8 *str, bool active) {
++    if (active) {
++        gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
++    } else {
++        gDPSetEnvColor(gDisplayListHead++, 128, 128, 128, gDialogTextAlpha);
++    }
++    print_generic_string(x, y, str);
++    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
++}
+ 
+-    print_generic_string(x, y, label);
+-    print_generic_string(statusX, y, unlocked ? textYes : textNo);
++static void render_pause_unlock_status(s16 x, s16 y, UNUSED s16 statusX, const u8 *label, bool unlocked) {
++    render_pause_unlock_text(x, y, label, unlocked);
+ }
+ 
+ static void pause_ascii_to_dialog_string(const char *ascii, u8 *dialog, s16 maxLength) {
+@@ -2976,8 +2988,8 @@
+         return 0;
+     }
+     int_to_str(bombCount, value);
+-    print_generic_string(x, y - row * 11, label);
+-    print_generic_string(valueX, y - row * 11, value);
++    render_pause_unlock_text(x, y - row * 11, label, bombCount != 0);
++    render_pause_unlock_text(valueX, y - row * 11, value, bombCount != 0);
+     return 1;
+ }
+ 
+@@ -3018,14 +3030,15 @@
+ static void render_pause_coin_star_requirement(s16 x, s16 y, s16 valueX, s16 courseNum) {
+     u8 strCoinRequirement[4];
+     s16 digitCount = 0;
++    s16 coinStarRequirement = SM64AP_GetCoinStarRequirement(courseNum + COURSE_MIN);
+ 
+-    int_to_str(SM64AP_GetCoinStarRequirement(courseNum + COURSE_MIN), strCoinRequirement);
++    int_to_str(coinStarRequirement, strCoinRequirement);
+     while (strCoinRequirement[digitCount] != DIALOG_CHAR_TERMINATOR) {
+         digitCount++;
+     }
+ 
+-    print_generic_string(x, y, sUnlockCoinStar);
+-    print_generic_string(valueX - (digitCount - 1) * 8, y, strCoinRequirement);
++    render_pause_unlock_text(x, y, sUnlockCoinStar, coinStarRequirement != 0);
++    render_pause_unlock_text(valueX - (digitCount - 1) * 8, y, strCoinRequirement, coinStarRequirement != 0);
+ }
+ 
+ static s16 pause_unlock_view_count(void) {

@@ -1,0 +1,720 @@
+diff --git a/include/text_options_strings.h.in b/include/text_options_strings.h.in
+index 61e5bce7..03321cc0 100644
+--- a/include/text_options_strings.h.in
++++ b/include/text_options_strings.h.in
+@@ -58,6 +58,9 @@
+ #define TEXT_OPT_THREEPT   _("THREE POINT")
+ #define TEXT_OPT_APPLY     _("APPLY")
+ #define TEXT_OPT_RESETWND  _("RESET WINDOW")
++#define TEXT_OPT_APNOTIF        _("AP NOTIFICATIONS")
++#define TEXT_OPT_APNOTIFCOUNT   _("AP NOTIFICATION COUNT")
++#define TEXT_OPT_APNOTIFDURATION _("AP NOTIFICATION TIME")
+ 
+ #define TEXT_BIND_A        _("A BUTTON")
+ #define TEXT_BIND_B        _("B BUTTON")
+@@ -124,6 +127,9 @@
+ #define TEXT_OPT_THREEPT   _("Three-point")
+ #define TEXT_OPT_APPLY     _("Apply")
+ #define TEXT_OPT_RESETWND  _("Reset Window")
++#define TEXT_OPT_APNOTIF        _("AP Notifications")
++#define TEXT_OPT_APNOTIFCOUNT   _("AP Notification Count")
++#define TEXT_OPT_APNOTIFDURATION _("AP Notification Time")
+ 
+ #define TEXT_BIND_A        _("A Button")
+ #define TEXT_BIND_B        _("B Button")
+diff --git a/lib/APCpp/Archipelago.cpp b/lib/APCpp/Archipelago.cpp
+index addb079..d0306f9 100644
+--- a/lib/APCpp/Archipelago.cpp
++++ b/lib/APCpp/Archipelago.cpp
+@@ -475,6 +475,10 @@ bool AP_IsMessagePending() {
+     return !messageQueue.empty();
+ }
+ 
++int AP_GetPendingMessageCount() {
++    return static_cast<int>(messageQueue.size());
++}
++
+ AP_Message* AP_GetLatestMessage() {
+     return messageQueue.front();
+ }
+@@ -923,6 +927,7 @@ bool parse_response(std::string msg, std::string &request) {
+                 msg->type = AP_MessageType::ItemSend;
+                 msg->item = getItemName(recv_player.game, root[i]["item"]["item"].asInt64());
+                 msg->recvPlayer = recv_player.alias;
++                msg->flags = root[i]["item"]["flags"].asInt();
+                 msg->text = msg->item + std::string(" was sent to ") + msg->recvPlayer;
+                 messageQueue.push_back(msg);
+             } else if (printType == "Hint") {
+@@ -987,6 +992,8 @@ bool parse_response(std::string msg, std::string &request) {
+                     msg->type = AP_MessageType::ItemRecv;
+                     msg->item = getItemName(ap_game, item_id);
+                     msg->sendPlayer = sender.alias;
++                    msg->flags = root[i]["items"][j]["flags"].asInt();
++                    msg->selfFound = (root[i]["items"][j]["player"].asInt() == ap_player_id);
+                     msg->text = std::string("Received ") + msg->item + std::string(" from ") + msg->sendPlayer;
+                     messageQueue.push_back(msg);
+                 }
+diff --git a/lib/APCpp/Archipelago.h b/lib/APCpp/Archipelago.h
+index a9f58c7..ae255a6 100644
+--- a/lib/APCpp/Archipelago.h
++++ b/lib/APCpp/Archipelago.h
+@@ -101,14 +101,23 @@ struct AP_Message {
+     std::string text;
+ };
+ 
++// AP_ItemSendMessage/AP_ItemRecvMessage::flags mirrors the AP network protocol's
++// NetworkItem "flags" bitfield (see AP_NetworkItem::flags above):
++// 0b001 = progression, 0b010 = useful, 0b100 = trap, 0 = filler/unclassified.
+ struct AP_ItemSendMessage : AP_Message {
+     std::string item;
+     std::string recvPlayer;
++    int flags = 0;
+ };
+ 
+ struct AP_ItemRecvMessage : AP_Message {
+     std::string item;
+     std::string sendPlayer;
++    int flags = 0;
++    // True when this item came from a location the local player themselves
++    // checked (i.e. sendPlayer is the local player), as opposed to an item
++    // found and sent by someone else in the multiworld.
++    bool selfFound = false;
+ };
+ 
+ struct AP_HintMessage : AP_Message {
+@@ -128,6 +137,7 @@ struct AP_CountdownMessage : AP_Message {
+ bool AP_IsMessagePending();
+ void AP_ClearLatestMessage();
+ AP_Message* AP_GetLatestMessage();
++int AP_GetPendingMessageCount();
+ 
+ void AP_Say(std::string);
+ 
+diff --git a/src/game/area.c b/src/game/area.c
+index 27119e8d..9d0798cf 100644
+--- a/src/game/area.c
++++ b/src/game/area.c
+@@ -22,6 +22,7 @@
+ #include "engine/geo_layout.h"
+ #include "save_file.h"
+ #include "level_table.h"
++#include "sm64ap.h"
+ 
+ #include "gfx_dimensions.h"
+ 
+@@ -385,6 +386,7 @@ void render_game(void) {
+ 
+         gDPSetScissor(gDisplayListHead++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+         render_text_labels();
++        SM64AP_RenderSimpleNotification();
+         do_cutscene_handler();
+         print_displaying_credits_entry();
+         gDPSetScissor(gDisplayListHead++, G_SC_NON_INTERLACE, 0, BORDER_HEIGHT, SCREEN_WIDTH,
+@@ -418,6 +420,7 @@ void render_game(void) {
+         }
+     } else {
+         render_text_labels();
++        SM64AP_RenderSimpleNotification();
+         if (D_8032CE78 != 0) {
+             clear_viewport(D_8032CE78, gWarpTransFBSetColor);
+         } else {
+diff --git a/src/game/options_menu.c b/src/game/options_menu.c
+index ced31038..afb44046 100644
+--- a/src/game/options_menu.c
++++ b/src/game/options_menu.c
+@@ -93,6 +93,9 @@ static const u8 optsVideoStr[][32] = {
+     { TEXT_OPT_HUD },
+     { TEXT_OPT_THREEPT },
+     { TEXT_OPT_APPLY },
++    { TEXT_OPT_APNOTIF },
++    { TEXT_OPT_APNOTIFCOUNT },
++    { TEXT_OPT_APNOTIFDURATION },
+ };
+ 
+ static const u8 optsAudioStr[][32] = {
+@@ -278,6 +281,9 @@ static struct Option optsVideo[] = {
+     DEF_OPT_TOGGLE( optsVideoStr[5], &configWindow.vsync ),
+     DEF_OPT_CHOICE( optsVideoStr[1], &configFiltering, filterChoices ),
+     DEF_OPT_TOGGLE( optsVideoStr[7], &configHUD ),
++    DEF_OPT_TOGGLE( optsVideoStr[10], &configAPNotifications ),
++    DEF_OPT_SCROLL( optsVideoStr[11], &configAPNotificationCount, 1, 3, 1 ),
++    DEF_OPT_SCROLL( optsVideoStr[12], &configAPNotificationDuration, 1, 10, 1 ),
+     DEF_OPT_BUTTON( optsVideoStr[4], optvideo_reset_window ),
+     DEF_OPT_BUTTON( optsVideoStr[9], optvideo_apply ),
+ };
+diff --git a/src/pc/configfile.c b/src/pc/configfile.c
+index 47c43294..d8df9f96 100644
+--- a/src/pc/configfile.c
++++ b/src/pc/configfile.c
+@@ -50,6 +50,9 @@ ConfigWindow configWindow       = {
+     .settings_changed = false,
+ };
+ unsigned int configFiltering    = 1;          // 0=force nearest, 1=linear, (TODO) 2=three-point
++bool configAPNotifications = true;            // AP item notifications (Simple style) on/off
++unsigned int configAPNotificationCount = 1;   // How many AP notifications can be shown at once (1-3)
++unsigned int configAPNotificationDuration = 5; // How many seconds each AP notification stays on screen (1-10)
+ unsigned int configMasterVolume = MAX_VOLUME; // 0 - MAX_VOLUME
+ unsigned int configMusicVolume = MAX_VOLUME;
+ unsigned int configSfxVolume = MAX_VOLUME;
+@@ -103,6 +106,9 @@ static const struct ConfigOption options[] = {
+     {.name = "window_h",             .type = CONFIG_TYPE_UINT, .uintValue = &configWindow.h},
+     {.name = "vsync",                .type = CONFIG_TYPE_BOOL, .boolValue = &configWindow.vsync},
+     {.name = "texture_filtering",    .type = CONFIG_TYPE_UINT, .uintValue = &configFiltering},
++    {.name = "ap_notifications",     .type = CONFIG_TYPE_BOOL, .boolValue = &configAPNotifications},
++    {.name = "ap_notification_count",.type = CONFIG_TYPE_UINT, .uintValue = &configAPNotificationCount},
++    {.name = "ap_notification_duration", .type = CONFIG_TYPE_UINT, .uintValue = &configAPNotificationDuration},
+     {.name = "master_volume",        .type = CONFIG_TYPE_UINT, .uintValue = &configMasterVolume},
+     {.name = "music_volume",         .type = CONFIG_TYPE_UINT, .uintValue = &configMusicVolume},
+     {.name = "sfx_volume",           .type = CONFIG_TYPE_UINT, .uintValue = &configSfxVolume},
+diff --git a/src/pc/configfile.h b/src/pc/configfile.h
+index c1a950cd..cb203221 100644
+--- a/src/pc/configfile.h
++++ b/src/pc/configfile.h
+@@ -19,6 +19,9 @@ typedef struct {
+ 
+ extern ConfigWindow configWindow;
+ extern unsigned int configFiltering;
++extern bool configAPNotifications;
++extern unsigned int configAPNotificationCount;
++extern unsigned int configAPNotificationDuration;
+ extern unsigned int configMasterVolume;
+ extern unsigned int configMusicVolume;
+ extern unsigned int configSfxVolume;
+diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
+--- a/src/sm64ap.cpp
++++ b/src/sm64ap.cpp
+@@ -34,6 +34,11 @@
+     void SM64AP_SetMarioCapShirtColor(u8 r, u8 g, u8 b);
+     void SM64AP_SetMarioCapGlovesColor(u8 r, u8 g, u8 b);
+     void SM64AP_SetMarioCapHairColor(u8 r, u8 g, u8 b);
++
++    // Per-glyph pixel widths for the dialog font used by print_generic_string,
++    // indexed by dialog char code (see DialogSpecialChars / ASCII_TO_DIALOG).
++    // Defined in ingame_menu.c; used here to word-wrap AP notification text.
++    extern u8 gDialogCharWidths[256];
+ }
+ 
+ #include <string>
+@@ -43,6 +48,7 @@
+ #include <bitset>
+ #include <set>
+ #include <queue>
++#include <deque>
+ #include <cctype>
+ #include <utility>
+ #include <algorithm>
+@@ -208,6 +214,47 @@
+ int cur_msg_frame_duration = msg_frame_duration;
+ std::queue<int64_t> delayed_queue;
+ 
++// Plain 8-bit RGB used by the Simple AP notification style (item tier colors,
++// text fill colors, etc.) -- kept separate from any N64-side color/vertex
++// types since these are only ever fed to gDPSetEnvColor's r/g/b arguments.
++struct SM64AP_Color {
++    u8 r, g, b;
++};
++
++// A colored sub-range of a notification sentence: [start, end) in the
++// original (unwrapped) sentence's character offsets.
++struct SM64AP_ColorSpan {
++    size_t start;
++    size_t end;
++    SM64AP_Color color;
++};
++
++// Forward declaration: defined further down alongside the rest of the Simple
++// notification machinery, but also used by SM64AP_ApplyUncollectTrapEvent()
++// above that definition.
++static void SM64AP_PushSimpleNotification(const std::string &sentence, std::vector<SM64AP_ColorSpan> spans);
++static SM64AP_Color SM64AP_GetItemTierColor(int flags);
++
++// One active message for the Simple notification style. Several of these can
++// be on screen at once (see configAPNotificationCount); each is timed
++// independently so a burst of items doesn't make later ones wait for earlier
++// ones to finish. Pushed by SM64AP_PrintNext() (game logic frame) and drawn by
++// SM64AP_RenderSimpleNotification() (graphics frame, called alongside
++// render_text_labels() so it shares Core's old bottom-left screen-space
++// coordinates and its independence from the HUD toggle). Each message is one
++// sentence (word-wrapped at draw time if it doesn't fit on one line); spans
++// mark which sub-range gets colored (the item name, by tier) while the rest
++// of the sentence stays white. Spans must be sorted by start and
++// non-overlapping.
++struct SM64AP_SimpleNotifEntry {
++    std::string text;
++    std::vector<SM64AP_ColorSpan> spans;
++    int framesRemaining;
++};
++// Front = oldest (closest to expiring, drawn nearest the top of the stack);
++// back = newest (drawn nearest the bottom, where new notifications appear).
++static std::deque<SM64AP_SimpleNotifEntry> sm64_simple_notif_entries;
++
+ std::map<int,int> map_entrances;
+ std::set<int> course_dest_supported;
+ 
+@@ -4341,6 +4388,47 @@
+     return output.str();
+ }
+ 
++// Title-case ASCII course names for the Uncollect Random Coin Trap's Simple
++// notification (see below). Indexed by CourseNum (course_table.h); separate
++// from course_name_table (ingame_menu.c) since that one is all-caps
++// dialog-font glyphs built for the pause menu, not ASCII text usable inside a
++// mixed-case sentence. Covers COURSE_NONE through COURSE_MAX.
++static const char *SM64AP_CourseNameTitleCase[] = {
++    "Castle Grounds",             // COURSE_NONE
++    "Bob-omb Battlefield",        // COURSE_BOB
++    "Whomp's Fortress",           // COURSE_WF
++    "Jolly Roger Bay",            // COURSE_JRB
++    "Cool, Cool Mountain",        // COURSE_CCM
++    "Big Boo's Haunt",            // COURSE_BBH
++    "Hazy Maze Cave",             // COURSE_HMC
++    "Lethal Lava Land",           // COURSE_LLL
++    "Shifting Sand Land",         // COURSE_SSL
++    "Dire, Dire Docks",           // COURSE_DDD
++    "Snowman's Land",             // COURSE_SL
++    "Wet-Dry World",              // COURSE_WDW
++    "Tall, Tall Mountain",        // COURSE_TTM
++    "Tiny-Huge Island",           // COURSE_THI
++    "Tick Tock Clock",            // COURSE_TTC
++    "Rainbow Ride",                // COURSE_RR
++    "Bowser in the Dark World",   // COURSE_BITDW
++    "Bowser in the Fire Sea",     // COURSE_BITFS
++    "Bowser in the Sky",          // COURSE_BITS
++    "Princess's Secret Slide",    // COURSE_PSS
++    "Cavern of the Metal Cap",    // COURSE_COTMC
++    "Tower of the Wing Cap",      // COURSE_TOTWC
++    "Vanish Cap Under the Moat",  // COURSE_VCUTM
++    "Wing Mario Over the Rainbow", // COURSE_WMOTR
++    "Secret Aquarium",            // COURSE_SA
++    "Credits",       				// COURSE_CAKE_END
++};
++
++static const char *SM64AP_GetCourseNameTitleCase(int course) {
++    if (course < COURSE_NONE || course > COURSE_MAX) {
++        return "Unknown";
++    }
++    return SM64AP_CourseNameTitleCase[course];
++}
++
+ static void SM64AP_ApplyUncollectTrapEvent(const SM64APUncollectTrapEvent &event) {
+     if (event.source == 0) {
+         return;
+@@ -4350,6 +4438,16 @@
+     sm64_permanent_coins.erase(key);
+     sm64_permanent_coin_updates.erase(key);
+     sm64_uncollected_coin_tombstones.insert(key);
++
++    if (configAPNotifications) {
++        std::string prefix = "A coin was uncollected in ";
++        std::string courseName = SM64AP_GetCourseNameTitleCase(event.course);
++        std::string sentence = prefix + courseName;
++        std::vector<SM64AP_ColorSpan> spans = {
++            { prefix.size(), prefix.size() + courseName.size(), SM64AP_GetItemTierColor(0x02) }
++        };
++        SM64AP_PushSimpleNotification(sentence, spans);
++    }
+ }
+ 
+ void SM64AP_UpdatePermanentCoinTrap() {
+@@ -5349,51 +5447,284 @@
+     return SM64AP_HaveAbilityForCurrentLevel(SM64AP_ID_LEDGEGRAB - SM64AP_ABILITY_OFFSET);
+ }
+ 
+-static std::vector<std::string> SM64AP_WrapItemMessage(const std::string &text) {
+-    static constexpr size_t glyphWidth = 12;
+-    static constexpr size_t horizontalMargin = 2;
+-    const size_t maxLineLength = static_cast<size_t>(
+-        (GFX_DIMENSIONS_FROM_RIGHT_EDGE(0) - GFX_DIMENSIONS_FROM_LEFT_EDGE(0)) / glyphWidth
+-    ) - horizontalMargin;
+-    std::vector<std::string> lines;
++// Item classification colors for the Simple notification style, matching the
++// tiers the Archipelago client/website use: Progression, Useful, Filler, Trap.
++// AP_Item{Send,Recv}Message::flags is the raw NetworkItem flags bitfield
++// (0b001 progression, 0b010 useful, 0b100 trap, 0 = filler/unclassified); when
++// more than one bit is set, progression takes priority, then trap, then useful.
++static SM64AP_Color SM64AP_GetItemTierColor(int flags) {
++    static constexpr SM64AP_Color kProgression = { 176,  99, 255 }; // Purple
++    static constexpr SM64AP_Color kUseful      = {  90, 140, 255 }; // Blue
++    static constexpr SM64AP_Color kFiller      = { 140, 210, 255 }; // Light Blue
++    static constexpr SM64AP_Color kTrap        = { 255,  80,  80 }; // Red
++
++    if (flags & 0x01) return kProgression;
++    if (flags & 0x04) return kTrap;
++    if (flags & 0x02) return kUseful;
++    return kFiller;
++}
++
++// A few dialog-font glyph codes (see charmap.txt) that aren't already exposed
++// by DialogSpecialChars in ingame_menu.h. Scoped to this file since nothing
++// else needs them.
++#define SM64AP_DIALOG_CHAR_APOSTROPHE 0x3E
++#define SM64AP_DIALOG_CHAR_HYPHEN     0x9F
++#define SM64AP_DIALOG_CHAR_OPEN_PAREN 0xE1
++#define SM64AP_DIALOG_CHAR_CLOSE_PAREN 0xE3
++#define SM64AP_DIALOG_CHAR_AMPERSAND  0xE5
++#define SM64AP_DIALOG_CHAR_COLON      0xE6
++#define SM64AP_DIALOG_CHAR_EXCLAIM    0xF2
++#define SM64AP_DIALOG_CHAR_PERCENT    0xF3
++#define SM64AP_DIALOG_CHAR_QUESTION   0xF4
++#define SM64AP_DIALOG_CHAR_TILDE      0xF7
++#define SM64AP_DIALOG_CHAR_DOLLAR     0xF9
++
++// Maps a raw ASCII char to its dialog-font char code (see DialogSpecialChars /
++// ASCII_TO_DIALOG and charmap.txt). Case is preserved -- the dialog font has
++// full upper/lowercase coverage, unlike the options menu's item name encoding
++// this was originally modeled on, which only has an uppercase HUD font
++// available to it. Every character handled here has a real glyph in the
++// dialog font; only characters with no glyph at all (accents, etc.) fall back
++// to a space.
++// Note: charmap.txt aliases glyph 0xE4 to both '+' and '↔', but no vanilla
++// dialog text ever actually uses '+' -- the glyph itself is a two-way arrow,
++// not a plus sign. There's no real plus glyph in this font, so '+' is left
++// out here and falls back to a space like other no-glyph characters below,
++// rather than silently rendering as an arrow.
++static u8 SM64AP_DialogCharCode(char c) {
++    switch (c) {
++        case ' ':  return DIALOG_CHAR_SPACE;
++        case '-':  return SM64AP_DIALOG_CHAR_HYPHEN;
++        case '\'': return SM64AP_DIALOG_CHAR_APOSTROPHE;
++        case '.':  return DIALOG_CHAR_PERIOD;
++        case ',':  return DIALOG_CHAR_COMMA;
++        case '(':  return SM64AP_DIALOG_CHAR_OPEN_PAREN;
++        case ')':  return SM64AP_DIALOG_CHAR_CLOSE_PAREN;
++        case '&':  return SM64AP_DIALOG_CHAR_AMPERSAND;
++        case ':':  return SM64AP_DIALOG_CHAR_COLON;
++        case '!':  return SM64AP_DIALOG_CHAR_EXCLAIM;
++        case '%':  return SM64AP_DIALOG_CHAR_PERCENT;
++        case '?':  return SM64AP_DIALOG_CHAR_QUESTION;
++        case '~':  return SM64AP_DIALOG_CHAR_TILDE;
++        case '$':  return SM64AP_DIALOG_CHAR_DOLLAR;
++        default:
++            if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
++                return static_cast<u8>(ASCII_TO_DIALOG(c));
++            }
++            return DIALOG_CHAR_SPACE;
++    }
++}
++
++// Encodes an ASCII string into the dialog font's character encoding used by
++// print_generic_string, clipping to fit dstSize (including the terminator).
++static void SM64AP_EncodeAsciiForDialog(const std::string &src, u8 *dst, size_t dstSize) {
++    size_t pos = 0;
++    for (size_t i = 0; i < src.size() && pos < dstSize - 1; i++) {
++        dst[pos++] = SM64AP_DialogCharCode(src[i]);
++    }
++    dst[pos] = DIALOG_CHAR_TERMINATOR;
++}
++
++// One word-wrapped line of a Simple notification, with its offset range into
++// the original (unwrapped) sentence so the caller can tell which part, if any,
++// of the line falls within the tier-colored item name.
++struct SM64AP_DialogLine {
++    std::string text;
++    size_t startOffset;
++};
++
++// Word-wraps text to fit within maxWidthPx, measuring each character with the
++// dialog font's real (variable) glyph widths rather than a fixed glyph size,
++// breaking on the last space before the limit like a normal word-wrap.
++static std::vector<SM64AP_DialogLine> SM64AP_WrapDialogText(const std::string &text, s32 maxWidthPx) {
++    std::vector<SM64AP_DialogLine> lines;
+     size_t position = 0;
+ 
+     while (position < text.size()) {
+-        size_t remaining = text.size() - position;
+-        if (remaining <= maxLineLength) {
+-            lines.push_back(text.substr(position));
+-            break;
++        size_t end = position;
++        s32 width = 0;
++        size_t lastSpace = std::string::npos;
++
++        while (end < text.size()) {
++            s32 charWidth = gDialogCharWidths[SM64AP_DialogCharCode(text[end])];
++            if (width + charWidth > maxWidthPx && end > position) {
++                break;
++            }
++            width += charWidth;
++            if (text[end] == ' ') {
++                lastSpace = end;
++            }
++            end++;
+         }
+ 
+-        size_t end = position + maxLineLength;
+-        size_t split = text.rfind(' ', end);
+-        if (split == std::string::npos || split < position) {
+-            split = end;
++        if (end < text.size() && lastSpace != std::string::npos && lastSpace >= position) {
++            end = lastSpace;
++        }
++        if (end == position) {
++            end = position + 1; // Always make progress, even if one glyph is too wide.
+         }
+-        lines.push_back(text.substr(position, split - position));
+-        position = split;
++
++        lines.push_back({ text.substr(position, end - position), position });
++        position = end;
+         while (position < text.size() && text[position] == ' ') {
+             position++;
+         }
+     }
+ 
+     if (lines.empty()) {
+-        lines.emplace_back();
++        lines.push_back({ std::string(), 0 });
+     }
+     return lines;
+ }
+ 
+-static void SM64AP_PrintWrappedItemMessage(
+-    const std::string &itemLine, const std::string &playerLine
+-) {
+-    std::vector<std::string> lines = SM64AP_WrapItemMessage(itemLine);
+-    for (size_t i = 0; i < lines.size(); i++) {
+-        print_text(
+-            GFX_DIMENSIONS_FROM_LEFT_EDGE(0),
+-            static_cast<s32>((lines.size() - i) * 20),
+-            lines[i].c_str());
++// How many Simple notifications can be on screen at once. Clamped defensively
++// since configAPNotificationCount is user-editable config-file data (the
++// options menu itself only ever offers 1-3 via DEF_OPT_SCROLL).
++static unsigned int SM64AP_GetNotificationSlotCount() {
++    if (configAPNotificationCount < 1) return 1;
++    if (configAPNotificationCount > 3) return 3;
++    return configAPNotificationCount;
++}
++
++// How many game-logic frames (SM64AP_PrintNext() is called once per frame,
++// always at 30Hz regardless of the PC port's render/vsync rate) a Simple
++// notification stays on screen for. configAPNotificationDuration is the
++// user-facing seconds value (see configfile.c); clamped defensively since
++// it's user-editable config-file data.
++static int SM64AP_GetNotificationDurationFrames() {
++    unsigned int seconds = configAPNotificationDuration;
++    if (seconds < 1) seconds = 1;
++    if (seconds > 10) seconds = 10;
++    return static_cast<int>(seconds) * 30;
++}
++
++static void SM64AP_PushSimpleNotification(const std::string &sentence, std::vector<SM64AP_ColorSpan> spans) {
++    sm64_simple_notif_entries.push_back({
++        sentence, std::move(spans), SM64AP_GetNotificationDurationFrames()
++    });
++}
++
++// Draws one line of the Simple AP notification with a small black drop shadow
++// behind a colored fill, the same shadowed-text style used for the move rando
++// overlay's HUD move list.
++static void SM64AP_DrawSimpleNotifLine(s16 x, s16 y, const u8 *str, SM64AP_Color color) {
++    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 255);
++    print_generic_string(x + 1, y - 1, str);
++    gDPSetEnvColor(gDisplayListHead++, color.r, color.g, color.b, 255);
++    print_generic_string(x, y, str);
++}
++
++// One notification entry after word-wrapping, ready to draw.
++struct SM64AP_WrappedNotifEntry {
++    std::vector<SM64AP_DialogLine> lines;
++    std::vector<SM64AP_ColorSpan> spans;
++};
++
++// Draws one already-wrapped line at the given row, coloring whatever part of
++// each span falls on this line and leaving the rest white. spans must be
++// sorted by start and non-overlapping (true of everything SM64AP_PrintNext()
++// builds); handles zero, one, or several spans touching a given line.
++static void SM64AP_DrawWrappedNotifLine(s16 x, s16 y, const SM64AP_DialogLine &line, const std::vector<SM64AP_ColorSpan> &spans) {
++    static constexpr SM64AP_Color kWhite = { 255, 255, 255 };
++    size_t lineStart = line.startOffset;
++    size_t lineEnd = line.startOffset + line.text.size();
++
++    s16 curX = x;
++    size_t cursor = lineStart; // next undrawn character, in sentence offsets
++
++    auto drawPart = [&](size_t partStart, size_t partEnd, SM64AP_Color color) {
++        if (partEnd <= partStart) return;
++        std::string part = line.text.substr(partStart - lineStart, partEnd - partStart);
++        u8 encoded[64];
++        SM64AP_EncodeAsciiForDialog(part, encoded, sizeof(encoded));
++        SM64AP_DrawSimpleNotifLine(curX, y, encoded, color);
++        s32 widthPx = 0;
++        for (char c : part) widthPx += gDialogCharWidths[SM64AP_DialogCharCode(c)];
++        curX = static_cast<s16>(curX + widthPx);
++    };
++
++    for (const SM64AP_ColorSpan &span : spans) {
++        size_t spanBegin = std::max(span.start, lineStart);
++        size_t spanEndClipped = std::min(span.end, lineEnd);
++        if (spanBegin >= spanEndClipped) continue; // doesn't touch this line
++        if (spanBegin > cursor) {
++            drawPart(cursor, spanBegin, kWhite);
++            cursor = spanBegin;
++        }
++        drawPart(cursor, spanEndClipped, span.color);
++        cursor = spanEndClipped;
++    }
++    if (cursor < lineEnd) {
++        drawPart(cursor, lineEnd, kWhite);
++    }
++}
++
++// Renders the Simple-style AP notification stack, bottom-left of the screen
++// just like Core: each active message is a word-wrapped sentence with its item
++// name colored by tier, oldest on top and the newest nearest the bottom (where
++// new notifications appear as they arrive). If more messages are waiting
++// because every slot in the stack is full, a trailing "+X more" row is drawn
++// beneath the newest one so the player knows there's a backlog.
++// Must be called from the graphics pass (alongside render_text_labels(), so it
++// shares the same screen-space ortho matrix Core's print_text() lines use),
++// never from game logic, since print_generic_string emits display list commands
++// immediately instead of queueing them like print_text() does.
++void SM64AP_RenderSimpleNotification() {
++    if (!configAPNotifications || sm64_simple_notif_entries.empty()) {
++        return;
++    }
++
++    static constexpr SM64AP_Color kMore = { 180, 180, 180 }; // Dim gray; not a tier color.
++    static constexpr s32 horizontalMarginPx = 24;
++    const s32 maxWidthPx = static_cast<s32>(
++        GFX_DIMENSIONS_FROM_RIGHT_EDGE(0) - GFX_DIMENSIONS_FROM_LEFT_EDGE(0)) - horizontalMarginPx;
++    const s16 x = GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(6);
++
++    // Word-wrap every active entry up front so the total row count (and thus
++    // the y offset of the very first row) is known before anything is drawn.
++    std::vector<SM64AP_WrappedNotifEntry> wrapped;
++    wrapped.reserve(sm64_simple_notif_entries.size());
++    for (const SM64AP_SimpleNotifEntry &entry : sm64_simple_notif_entries) {
++        wrapped.push_back({ SM64AP_WrapDialogText(entry.text, maxWidthPx), entry.spans });
++    }
++
++    // Every slot is occupied and there are still messages behind them in the
++    // AP queue: reserve a row for a "X more" indicator. Only counts if the
++    // message actually blocking the queue is itself an eligible notification
++    // type -- if it's something else (e.g. a Countdown), that message blocks
++    // the queue for its own reasons and isn't "waiting on a slot".
++    size_t pendingMore = 0;
++    if (sm64_simple_notif_entries.size() >= SM64AP_GetNotificationSlotCount() && AP_IsMessagePending()) {
++        AP_Message* frontMsg = AP_GetLatestMessage();
++        if (frontMsg->type == AP_MessageType::ItemSend || frontMsg->type == AP_MessageType::ItemRecv) {
++            pendingMore = static_cast<size_t>(AP_GetPendingMessageCount());
++        }
++    }
++
++    size_t totalRows = (pendingMore > 0) ? 1 : 0;
++    for (const SM64AP_WrappedNotifEntry &entry : wrapped) {
++        totalRows += entry.lines.size();
++    }
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
++
++    size_t rowFromTop = 0;
++    for (const SM64AP_WrappedNotifEntry &entry : wrapped) {
++        for (const SM64AP_DialogLine &line : entry.lines) {
++            s16 y = static_cast<s16>((totalRows - 1 - rowFromTop) * 20);
++            rowFromTop++;
++            SM64AP_DrawWrappedNotifLine(x, y, line, entry.spans);
++        }
++    }
++
++    if (pendingMore > 0) {
++        std::string moreText = std::to_string(pendingMore) + " more";
++        u8 encoded[64];
++        SM64AP_EncodeAsciiForDialog(moreText, encoded, sizeof(encoded));
++        SM64AP_DrawSimpleNotifLine(x, 0, encoded, kMore);
+     }
+-    print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(0), 0, playerLine.c_str());
++
++    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
+ }
+ 
+ void SM64AP_PrintNext() {
+@@ -5409,18 +5740,67 @@
+         print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(SCREEN_WIDTH / 2) - 10, SCREEN_HEIGHT / 2, "INCOMPATIBLE WITH");
+         print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(SCREEN_WIDTH / 2) - 10, SCREEN_HEIGHT / 2 - 20, "MOUE RANDO");
+     }
++    // Drain as many queued ItemSend/ItemRecv messages as there's room for in
++    // the Simple notification stack, so a burst of items shows up together
++    // instead of forcing the player to wait for each one to finish displaying
++    // before the next appears. Any other message type (Countdown, Hint,
++    // Plaintext) still blocks the front of the queue and falls through to the
++    // single-message handling below, exactly as before -- once it's done,
++    // later PrintNext() calls resume draining items from behind it.
++    unsigned int notifSlots = SM64AP_GetNotificationSlotCount();
++    while (sm64_simple_notif_entries.size() < notifSlots && AP_IsMessagePending()) {
++        AP_Message* next = AP_GetLatestMessage();
++        if (next->type == AP_MessageType::ItemSend) {
++            // You found someone else's item and sent it to them.
++            AP_ItemSendMessage* o_msg = static_cast<AP_ItemSendMessage*>(next);
++            std::string prefix = "You found " + o_msg->recvPlayer + "'s ";
++            if (configAPNotifications) {
++                std::string sentence = prefix + o_msg->item;
++                std::vector<SM64AP_ColorSpan> spans = {
++                    { prefix.size(), sentence.size(), SM64AP_GetItemTierColor(o_msg->flags) }
++                };
++                SM64AP_PushSimpleNotification(sentence, spans);
++            }
++            AP_ClearLatestMessage();
++        } else if (next->type == AP_MessageType::ItemRecv) {
++            AP_ItemRecvMessage* o_msg = static_cast<AP_ItemRecvMessage*>(next);
++            // Either someone else found an item belonging to you, or you found
++            // one of your own items yourself.
++            std::string prefix = o_msg->selfFound
++                ? "You found your "
++                : (o_msg->sendPlayer + " found your ");
++            if (configAPNotifications) {
++                std::string sentence = prefix + o_msg->item;
++                std::vector<SM64AP_ColorSpan> spans = {
++                    { prefix.size(), sentence.size(), SM64AP_GetItemTierColor(o_msg->flags) }
++                };
++                SM64AP_PushSimpleNotification(sentence, spans);
++            }
++            AP_ClearLatestMessage();
++        } else {
++            break;
++        }
++    }
++
++    // Age out active notifications independently, so each stays on screen for
++    // msg_frame_duration frames regardless of when its neighbors expire.
++    for (SM64AP_SimpleNotifEntry &entry : sm64_simple_notif_entries) {
++        if (entry.framesRemaining > 0) entry.framesRemaining--;
++    }
++    while (!sm64_simple_notif_entries.empty() && sm64_simple_notif_entries.front().framesRemaining <= 0) {
++        sm64_simple_notif_entries.pop_front();
++    }
++
+     if (!AP_IsMessagePending()) return;
+     AP_Message* msg = AP_GetLatestMessage();
++    if (msg->type == AP_MessageType::ItemSend || msg->type == AP_MessageType::ItemRecv) {
++        // Every notification slot is currently full. Leave this message at
++        // the front of the queue untouched -- the draining loop above will
++        // pick it up as soon as a slot frees up on a later frame.
++        return;
++    }
+     int display_duration = msg_frame_duration;
+-    if (msg->type == AP_MessageType::ItemSend) {
+-        AP_ItemSendMessage* o_msg = static_cast<AP_ItemSendMessage*>(msg);
+-        SM64AP_PrintWrappedItemMessage(
+-            o_msg->item, "Sent to " + o_msg->recvPlayer);
+-    } else if (msg->type == AP_MessageType::ItemRecv) {
+-        AP_ItemRecvMessage* o_msg = static_cast<AP_ItemRecvMessage*>(msg);
+-        SM64AP_PrintWrappedItemMessage(
+-            o_msg->item, "Received from " + o_msg->sendPlayer);
+-    } else if (msg->type == AP_MessageType::Countdown) {
++    if (msg->type == AP_MessageType::Countdown) {
+         display_duration = 30;
+         AP_CountdownMessage* o_msg = static_cast<AP_CountdownMessage*>(msg);
+         print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(0) + SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, std::to_string(o_msg->timer).c_str());
+diff --git a/src/sm64ap.h b/src/sm64ap.h
+index b41b59ce..46ee9a46 100644
+--- a/src/sm64ap.h
++++ b/src/sm64ap.h
+@@ -545,6 +545,7 @@ AP_EXTERN_C int SM64AP_LastLocationCheckId();
+ 
+ // Print Next Message to Screen
+ AP_EXTERN_C void SM64AP_PrintNext();
++AP_EXTERN_C void SM64AP_RenderSimpleNotification();
+ 
+ // If an item exists on the stack, return it, otherwise 0
+ AP_EXTERN_C int64_t SM64AP_PopDelayedStack();
