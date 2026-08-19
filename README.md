@@ -43,6 +43,9 @@ This patch disables Game Overs. (shocker, I know)
 > This patch is deprecated.\
 > It will cease to function in v0.3.0.
 
+> [!CAUTION]
+> This patch is incompatible with Persistent Cap Powers.\
+
 ## Easy Airborne Coins
 This patch makes collecting coins and star secrets easier when flying with the Wing Cap or when being fired from a Cannon.
 
@@ -59,6 +62,9 @@ This patch disables the cheat detection for Koopa the Quick and the Big Penguin,
 
 ## Persistent Cap Powers
 This patch allows taking cap powers between stages and warps, if Mario has his hat.
+
+> [!CAUTION]
+> This patch is incompatible with Disable Game Overs.\
 
 ## Random Instruments
 This patch adds three new Sound options which allows you to toggle whether or not instruments are random for music, jingles and sound effects.
