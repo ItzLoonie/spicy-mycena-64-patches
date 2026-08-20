@@ -23,7 +23,7 @@ index 61e5bce7..03321cc0 100644
  #define TEXT_BIND_A        _("A Button")
  #define TEXT_BIND_B        _("B Button")
 diff --git a/lib/APCpp/Archipelago.cpp b/lib/APCpp/Archipelago.cpp
-index addb079..d0306f9 100644
+index addb0799..c0b7d721 100644
 --- a/lib/APCpp/Archipelago.cpp
 +++ b/lib/APCpp/Archipelago.cpp
 @@ -475,6 +475,10 @@ bool AP_IsMessagePending() {
@@ -37,7 +37,18 @@ index addb079..d0306f9 100644
  AP_Message* AP_GetLatestMessage() {
      return messageQueue.front();
  }
-@@ -923,6 +927,7 @@ bool parse_response(std::string msg, std::string &request) {
+@@ -486,6 +490,10 @@ void AP_ClearLatestMessage() {
+     }
+ }
+ 
++void AP_PushMessage(AP_Message* msg) {
++    messageQueue.push_back(msg);
++}
++
+ void AP_Say(std::string text) {
+     Json::Value req_t;
+     req_t[0]["cmd"] = "Say";
+@@ -923,6 +931,7 @@ bool parse_response(std::string msg, std::string &request) {
                  msg->type = AP_MessageType::ItemSend;
                  msg->item = getItemName(recv_player.game, root[i]["item"]["item"].asInt64());
                  msg->recvPlayer = recv_player.alias;
@@ -45,7 +56,7 @@ index addb079..d0306f9 100644
                  msg->text = msg->item + std::string(" was sent to ") + msg->recvPlayer;
                  messageQueue.push_back(msg);
              } else if (printType == "Hint") {
-@@ -987,6 +992,8 @@ bool parse_response(std::string msg, std::string &request) {
+@@ -987,6 +996,8 @@ bool parse_response(std::string msg, std::string &request) {
                      msg->type = AP_MessageType::ItemRecv;
                      msg->item = getItemName(ap_game, item_id);
                      msg->sendPlayer = sender.alias;
@@ -55,10 +66,24 @@ index addb079..d0306f9 100644
                      messageQueue.push_back(msg);
                  }
 diff --git a/lib/APCpp/Archipelago.h b/lib/APCpp/Archipelago.h
-index a9f58c7..ae255a6 100644
+index a9f58c72..568f99bc 100644
 --- a/lib/APCpp/Archipelago.h
 +++ b/lib/APCpp/Archipelago.h
-@@ -101,14 +101,23 @@ struct AP_Message {
+@@ -93,7 +93,12 @@ void AP_DeathLinkSend();
+ /* Message Management Types */
+ 
+ enum struct AP_MessageType {
+-    Plaintext, ItemSend, ItemRecv, Hint, Countdown
++    Plaintext, ItemSend, ItemRecv, Hint, Countdown,
++    // Locally-generated message types (never produced by parse_response) --
++    // pushed onto messageQueue via AP_PushMessage() by game code that wants
++    // its own notifications to share the same display queue/cap as item
++    // messages, instead of maintaining a separate backlog.
++    CoinTrap
+ };
+ 
+ struct AP_Message {
+@@ -101,14 +106,23 @@ struct AP_Message {
      std::string text;
  };
  
@@ -82,11 +107,30 @@ index a9f58c7..ae255a6 100644
  };
  
  struct AP_HintMessage : AP_Message {
-@@ -128,6 +137,7 @@ struct AP_CountdownMessage : AP_Message {
+@@ -123,11 +137,26 @@ struct AP_CountdownMessage : AP_Message {
+     int timer;
+ };
+ 
++// Game-specific, locally-generated notification (see AP_MessageType::CoinTrap).
++// Deliberately just a free-form label rather than an item/player pair --
++// callers that need more structure than one string can subclass their own
++// AP_Message-derived type and give it their own AP_MessageType.
++struct AP_LocalNotifMessage : AP_Message {
++    std::string label;
++};
++
+ /* Message Management Functions */
+ 
  bool AP_IsMessagePending();
  void AP_ClearLatestMessage();
  AP_Message* AP_GetLatestMessage();
 +int AP_GetPendingMessageCount();
++// Enqueues a locally-generated message (heap-allocated, ownership transfers
++// to the queue) onto the back of the same queue AP_GetLatestMessage() and
++// AP_ClearLatestMessage() drain, so it queues and caps identically to
++// server-originated messages. Only intended for AP_MessageType values that
++// parse_response() never produces itself (see AP_MessageType::CoinTrap).
++void AP_PushMessage(AP_Message* msg);
  
  void AP_Say(std::string);
  
@@ -143,7 +187,7 @@ index ced31038..afb44046 100644
      DEF_OPT_BUTTON( optsVideoStr[9], optvideo_apply ),
  };
 diff --git a/src/pc/configfile.c b/src/pc/configfile.c
-index 47c43294..d8df9f96 100644
+index 47c43294..4083d476 100644
 --- a/src/pc/configfile.c
 +++ b/src/pc/configfile.c
 @@ -50,6 +50,9 @@ ConfigWindow configWindow       = {
@@ -181,9 +225,10 @@ index c1a950cd..cb203221 100644
  extern unsigned int configMusicVolume;
  extern unsigned int configSfxVolume;
 diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
+index 5897a4a0..d8f3b78f 100644
 --- a/src/sm64ap.cpp
 +++ b/src/sm64ap.cpp
-@@ -34,6 +34,11 @@
+@@ -34,6 +34,11 @@ extern "C" {
      void SM64AP_SetMarioCapShirtColor(u8 r, u8 g, u8 b);
      void SM64AP_SetMarioCapGlovesColor(u8 r, u8 g, u8 b);
      void SM64AP_SetMarioCapHairColor(u8 r, u8 g, u8 b);
@@ -195,7 +240,7 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
  }
  
  #include <string>
-@@ -43,6 +48,7 @@
+@@ -43,6 +48,7 @@ extern "C" {
  #include <bitset>
  #include <set>
  #include <queue>
@@ -203,7 +248,7 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
  #include <cctype>
  #include <utility>
  #include <algorithm>
-@@ -208,6 +214,47 @@
+@@ -208,6 +214,47 @@ int msg_frame_duration = 90;
  int cur_msg_frame_duration = msg_frame_duration;
  std::queue<int64_t> delayed_queue;
  
@@ -251,7 +296,7 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
  std::map<int,int> map_entrances;
  std::set<int> course_dest_supported;
  
-@@ -4341,6 +4388,47 @@
+@@ -4341,6 +4388,47 @@ static std::string SM64AP_SerializeUncollectTrapEvent(
      return output.str();
  }
  
@@ -299,24 +344,26 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
  static void SM64AP_ApplyUncollectTrapEvent(const SM64APUncollectTrapEvent &event) {
      if (event.source == 0) {
          return;
-@@ -4350,6 +4438,16 @@
+@@ -4350,6 +4438,18 @@ static void SM64AP_ApplyUncollectTrapEvent(const SM64APUncollectTrapEvent &event
      sm64_permanent_coins.erase(key);
      sm64_permanent_coin_updates.erase(key);
      sm64_uncollected_coin_tombstones.insert(key);
 +
-+    if (configAPNotifications) {
-+        std::string prefix = "A coin was uncollected in ";
-+        std::string courseName = SM64AP_GetCourseNameTitleCase(event.course);
-+        std::string sentence = prefix + courseName;
-+        std::vector<SM64AP_ColorSpan> spans = {
-+            { prefix.size(), prefix.size() + courseName.size(), SM64AP_GetItemTierColor(0x02) }
-+        };
-+        SM64AP_PushSimpleNotification(sentence, spans);
-+    }
++    // Enqueue onto the same AP_Message queue ItemSend/ItemRecv use, rather
++    // than pushing straight onto the Simple notification display stack, so
++    // it obeys the same slot cap and FIFO ordering as everything else --
++    // SM64AP_PrintNext() drains and displays it exactly like a real AP
++    // message. Pushed unconditionally, independent of configAPNotifications,
++    // matching how item messages always land in the queue regardless of
++    // whether they'll end up displayed; that check happens at drain time.
++    AP_LocalNotifMessage* notifMsg = new AP_LocalNotifMessage();
++    notifMsg->type = AP_MessageType::CoinTrap;
++    notifMsg->label = SM64AP_GetCourseNameTitleCase(event.course);
++    AP_PushMessage(notifMsg);
  }
  
  void SM64AP_UpdatePermanentCoinTrap() {
-@@ -5349,51 +5447,284 @@
+@@ -5349,51 +5449,286 @@ bool SM64AP_CanLedgeGrab() {
      return SM64AP_HaveAbilityForCurrentLevel(SM64AP_ID_LEDGEGRAB - SM64AP_ABILITY_OFFSET);
  }
  
@@ -588,15 +635,17 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
 +        wrapped.push_back({ SM64AP_WrapDialogText(entry.text, maxWidthPx), entry.spans });
 +    }
 +
-+    // Every slot is occupied and there are still messages behind them in the
-+    // AP queue: reserve a row for a "X more" indicator. Only counts if the
-+    // message actually blocking the queue is itself an eligible notification
-+    // type -- if it's something else (e.g. a Countdown), that message blocks
-+    // the queue for its own reasons and isn't "waiting on a slot".
++    // Every slot is occupied and there are still messages behind them --
++    // either in the AP queue or the Uncollect Random Coin Trap backlog:
++    // reserve a row for a "X more" indicator. Only counts if the message
++    // actually blocking the queue is itself an eligible notification type --
++    // if it's something else (e.g. a Countdown), that message blocks the
++    // queue for its own reasons and isn't "waiting on a slot".
 +    size_t pendingMore = 0;
 +    if (sm64_simple_notif_entries.size() >= SM64AP_GetNotificationSlotCount() && AP_IsMessagePending()) {
 +        AP_Message* frontMsg = AP_GetLatestMessage();
-+        if (frontMsg->type == AP_MessageType::ItemSend || frontMsg->type == AP_MessageType::ItemRecv) {
++        if (frontMsg->type == AP_MessageType::ItemSend || frontMsg->type == AP_MessageType::ItemRecv
++            || frontMsg->type == AP_MessageType::CoinTrap) {
 +            pendingMore = static_cast<size_t>(AP_GetPendingMessageCount());
 +        }
 +    }
@@ -629,17 +678,21 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
  }
  
  void SM64AP_PrintNext() {
-@@ -5409,18 +5740,67 @@
+@@ -5409,18 +5744,83 @@ void SM64AP_PrintNext() {
          print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(SCREEN_WIDTH / 2) - 10, SCREEN_HEIGHT / 2, "INCOMPATIBLE WITH");
          print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(SCREEN_WIDTH / 2) - 10, SCREEN_HEIGHT / 2 - 20, "MOUE RANDO");
      }
-+    // Drain as many queued ItemSend/ItemRecv messages as there's room for in
-+    // the Simple notification stack, so a burst of items shows up together
-+    // instead of forcing the player to wait for each one to finish displaying
-+    // before the next appears. Any other message type (Countdown, Hint,
-+    // Plaintext) still blocks the front of the queue and falls through to the
-+    // single-message handling below, exactly as before -- once it's done,
-+    // later PrintNext() calls resume draining items from behind it.
++    // Drain as many queued ItemSend/ItemRecv/CoinTrap messages as there's
++    // room for in the Simple notification stack, so a burst shows up
++    // together instead of forcing the player to wait for each one to finish
++    // displaying before the next appears. CoinTrap messages are locally
++    // generated (see SM64AP_ApplyUncollectTrapEvent) but pushed onto this
++    // same AP_Message queue via AP_PushMessage precisely so they queue and
++    // cap the same way as everything else here. Any other AP message type
++    // (Countdown, Hint, Plaintext) still blocks the front of the queue and
++    // falls through to the single-message handling below, exactly as before
++    // -- once it's done, later PrintNext() calls resume draining from behind
++    // it.
 +    unsigned int notifSlots = SM64AP_GetNotificationSlotCount();
 +    while (sm64_simple_notif_entries.size() < notifSlots && AP_IsMessagePending()) {
 +        AP_Message* next = AP_GetLatestMessage();
@@ -670,6 +723,17 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
 +                SM64AP_PushSimpleNotification(sentence, spans);
 +            }
 +            AP_ClearLatestMessage();
++        } else if (next->type == AP_MessageType::CoinTrap) {
++            AP_LocalNotifMessage* o_msg = static_cast<AP_LocalNotifMessage*>(next);
++            std::string prefix = "A coin was uncollected in ";
++            if (configAPNotifications) {
++                std::string sentence = prefix + o_msg->label;
++                std::vector<SM64AP_ColorSpan> spans = {
++                    { prefix.size(), sentence.size(), SM64AP_GetItemTierColor(0x02) }
++                };
++                SM64AP_PushSimpleNotification(sentence, spans);
++            }
++            AP_ClearLatestMessage();
 +        } else {
 +            break;
 +        }
@@ -686,7 +750,8 @@ diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
 +
      if (!AP_IsMessagePending()) return;
      AP_Message* msg = AP_GetLatestMessage();
-+    if (msg->type == AP_MessageType::ItemSend || msg->type == AP_MessageType::ItemRecv) {
++    if (msg->type == AP_MessageType::ItemSend || msg->type == AP_MessageType::ItemRecv
++        || msg->type == AP_MessageType::CoinTrap) {
 +        // Every notification slot is currently full. Leave this message at
 +        // the front of the queue untouched -- the draining loop above will
 +        // pick it up as soon as a slot frees up on a later frame.
