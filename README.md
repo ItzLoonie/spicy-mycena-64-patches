@@ -21,7 +21,7 @@ This patch will automatically collect coins that are produced from objects like 
 
 ## Better Level Items Screen
 This patch tweaks the Level Items screen to be easier to understand what you have and don't have at a glance.\
-This is accomplished by making missing items gray.
+This is accomplished by making missing items gray instead of the Y/N system.
 
 ## Bowser Hits
 This patch just tells you how many hits Bowser takes in the Level Items screen.
