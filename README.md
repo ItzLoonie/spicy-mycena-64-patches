@@ -6,6 +6,7 @@
 > - Area Randomizer Spoilers (area-rando-spoilers.patch)
 > - Clean AP Notifications (clean-ap-notifs.patch)
 > - Persistent Cap Powers (persistent-cap-powers.patch)
+> - Secret Sparkles (secret-sparkles.patch)
 
 
 ## Area Randomizer Spoilers
@@ -80,9 +81,6 @@ Purple: 1-Up Butterflies\
 Blue: Warps\
 Yellow: Star secrets, SSL pyramid triggers\
 Orange: Unclaimed Monty Moles
-
-> [!WARNING]
-> This patch is deprecated.
 
 ## Skip Popups
 This patch skips certain popups to make the flow of the game better for an Archipelago.\
