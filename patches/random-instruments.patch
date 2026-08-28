@@ -1,27 +1,27 @@
 diff --git a/include/text_options_strings.h.in b/include/text_options_strings.h.in
-index 61e5bce7..e0cb0e3c 100644
+index 61e5bce7..d2e0a766 100644
 --- a/include/text_options_strings.h.in
 +++ b/include/text_options_strings.h.in
-@@ -58,6 +58,9 @@
- #define TEXT_OPT_THREEPT   _("THREE POINT")
- #define TEXT_OPT_APPLY     _("APPLY")
- #define TEXT_OPT_RESETWND  _("RESET WINDOW")
+@@ -52,6 +52,9 @@
+ #define TEXT_OPT_MUSVOLUME _("MUSIC VOLUME")
+ #define TEXT_OPT_SFXVOLUME _("SFX VOLUME")
+ #define TEXT_OPT_ENVVOLUME _("ENV VOLUME")
 +#define TEXT_OPT_INSTRSHUFFLE   _("RANDOM INSTRUMENTS")
 +#define TEXT_OPT_JINGLESHUFFLE  _("RANDOM JINGLES")
 +#define TEXT_OPT_SFXSHUFFLE     _("RANDOM SOUND EFFECTS")
- 
- #define TEXT_BIND_A        _("A BUTTON")
- #define TEXT_BIND_B        _("B BUTTON")
-@@ -124,6 +127,9 @@
- #define TEXT_OPT_THREEPT   _("Three-point")
- #define TEXT_OPT_APPLY     _("Apply")
- #define TEXT_OPT_RESETWND  _("Reset Window")
+ #define TEXT_OPT_VSYNC     _("VERTICAL SYNC")
+ #define TEXT_OPT_AUTO      _("AUTO")
+ #define TEXT_OPT_HUD       _("HUD")
+@@ -118,6 +121,9 @@
+ #define TEXT_OPT_MUSVOLUME _("Music Volume")
+ #define TEXT_OPT_SFXVOLUME _("Sfx Volume")
+ #define TEXT_OPT_ENVVOLUME _("Env Volume")
 +#define TEXT_OPT_INSTRSHUFFLE   _("Random Instruments")
 +#define TEXT_OPT_JINGLESHUFFLE  _("Random Jingles")
 +#define TEXT_OPT_SFXSHUFFLE     _("Random Sound Effects")
- 
- #define TEXT_BIND_A        _("A Button")
- #define TEXT_BIND_B        _("B Button")
+ #define TEXT_OPT_VSYNC     _("Vertical Sync")
+ #define TEXT_OPT_AUTO      _("Auto")
+ #define TEXT_OPT_HUD       _("HUD")
 diff --git a/src/audio/seqplayer.c b/src/audio/seqplayer.c
 index 91146bbb..4608da0a 100644
 --- a/src/audio/seqplayer.c
