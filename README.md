@@ -19,6 +19,9 @@ This patch overhauls the appearance of Archipelago item notifications, making th
 You will also be told what course was affected by an Uncollect Random Coin Trap.\
 Item tiers are also reflected.
 
+## DynOS AP
+An updated version of the dynosAP patch, as the core version is incompatible with Spicy Mycena 64.
+
 ## Easy Airborne Coins
 This patch makes collecting coins and star secrets easier when flying with the Wing Cap or when being fired from a Cannon.
 
