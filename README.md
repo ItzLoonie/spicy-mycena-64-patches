@@ -5,6 +5,7 @@
 > - Auto Collect Coins (autocollect-coins.patch)
 > - Area Randomizer Spoilers (area-rando-spoilers.patch)
 > - Clean AP Notifications (clean-ap-notifs.patch)
+> - Info HUD (info-hud.patch)
 > - Persistent Cap Powers (persistent-cap-powers.patch)
 > - Secret Sparkles (secret-sparkles.patch)
 
