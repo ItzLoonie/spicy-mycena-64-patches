@@ -3,7 +3,7 @@
 
 ## Area Randomizer Tracker
 This patch adds a new section to the Level Items screen.\
-This new section is a full tracker for area rando.\
+This new section is a full tracker for area rando.
 
 Supports all form of entrance randomization.
 
