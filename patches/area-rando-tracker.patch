@@ -1,0 +1,851 @@
+diff --git a/src/game/ingame_menu.c b/src/game/ingame_menu.c
+index 81b2299..9c9d70b 100644
+--- a/src/game/ingame_menu.c
++++ b/src/game/ingame_menu.c
+@@ -2544,6 +2544,12 @@ enum PauseUnlockViewType {
+     PAUSE_UNLOCK_VIEW_COURSE,
+     PAUSE_UNLOCK_VIEW_CASTLE,
+     PAUSE_UNLOCK_VIEW_SECRET,
++    PAUSE_UNLOCK_VIEW_ENTRANCES,
++};
++
++struct PauseEntranceRow {
++    s16 sourceEntranceId; // SM64AP_ENTRANCE_ID(level, variant) of the vanilla/fixed source spot
++    const u8 *sourceLabel;
+ };
+ 
+ struct PauseUnlockView {
+@@ -2607,6 +2613,63 @@ static const u8 sPauseViewTotwc[] = { TEXT_PAUSE_VIEW_TOTWC };
+ static const u8 sPauseViewWmotr[] = { TEXT_PAUSE_VIEW_WMOTR };
+ static const u8 sPauseViewPss[] = { TEXT_PAUSE_VIEW_PSS };
+ static const u8 sPauseViewSa[] = { TEXT_PAUSE_VIEW_SA };
++static const u8 sPauseViewEntrances[] = {
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('R'),
++    ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('E'),
++    ASCII_TO_DIALOG('S'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntrancesPageOneTitle[] = {
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('R'),
++    ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('E'),
++    ASCII_TO_DIALOG('S'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntrancesPageTwoTitle[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('U'), ASCII_TO_DIALOG('B'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('A'),
++    ASCII_TO_DIALOG('S'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceUndiscoveredLabel[] = {
++    DIALOG_CHAR_QUESTION_MARK, DIALOG_CHAR_QUESTION_MARK, DIALOG_CHAR_QUESTION_MARK, DIALOG_CHAR_TERMINATOR
++};
++
++// Compact row labels for the three Bowser stages. sPauseViewBitdw/Bitfs/Bits
++// are the full vanilla page titles ("BOWSER IN THE DARK WORLD", etc.) meant
++// for a full-width title bar - way too wide for a ~90px entrance-row slot.
++// Used both as this row's source label and (via pause_entrance_dest_label)
++// wherever a Bowser stage shows up as a randomized destination.
++static const u8 sPauseEntranceBitdw[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('D'),
++    ASCII_TO_DIALOG('W'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceBitfs[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('F'),
++    ASCII_TO_DIALOG('S'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceBits[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('S'),
++    DIALOG_CHAR_TERMINATOR
++};
++
++// Compact row labels for entrances whose only existing labels are full-width
++// page titles (sPauseViewCastle/Totwc/Vcutm - fine for a title bar, way too
++// wide for a ~90px entrance-row slot). Same fix as the Bowser stage labels
++// above, extended to cover the castle hub (used as a sub-area exit
++// destination on page 2 - shared across all three castle-area LEVEL_
++// constants: LEVEL_CASTLE, LEVEL_CASTLE_GROUNDS, LEVEL_CASTLE_COURTYARD,
++// see pause_entrance_dest_label) and the two secret-star stages that still
++// used their full titles as both source and destination labels.
++static const u8 sPauseEntranceCastle[] = {
++    ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('L'),
++    DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceTotwc[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('W'),
++    ASCII_TO_DIALOG('C'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceVcutm[] = {
++    ASCII_TO_DIALOG('V'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('U'), ASCII_TO_DIALOG('T'),
++    ASCII_TO_DIALOG('M'), DIALOG_CHAR_TERMINATOR
++};
+ 
+ static const u8 sMoveDouble[] = { TEXT_DOUBLE_JUMP };
+ static const u8 sMoveTriple[] = { TEXT_TRIPLE_JUMP };
+@@ -2754,6 +2817,325 @@ static const u8 sPaintingWmotr[] = {
+     ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE, DIALOG_CHAR_TERMINATOR
+ };
+ 
++// Page 1 source-side labels for the split WDW/TTC entrance variants (see
++// SM64AP_ENTRANCE_WDW_*/SM64AP_ENTRANCE_TTC_* in sm64ap.h). TTC's four
++// variants are clock-arm speed settings (confirmed via
++// SM64AP_SetTTCEntranceVariantSpeed()/gTTCSpeedSetting in sm64ap.cpp,
++// TTC_SPEED_STOPPED/SLOW/RANDOM/FAST), not clock-face positions - labeled
++// accordingly below.
++static const u8 sPauseEntranceWdwLow[] = {
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('W'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('L'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceWdwMiddle[] = {
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('W'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('M'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceWdwHigh[] = {
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('W'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('H'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceTtcStopped[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('C'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('P'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceTtcSlow[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('C'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('W'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceTtcRandom[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('C'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('N'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_TERMINATOR
++};
++static const u8 sPauseEntranceTtcFast[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('C'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_TERMINATOR
++};
++
++// Maps a destination LEVEL_ constant to the same short label already used
++// elsewhere in this file for that course, for "SRC > DEST" display.
++static const u8 *pause_entrance_dest_label(s16 entranceKey) {
++    switch (entranceKey) {
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_LOW):    return sPauseEntranceWdwLow;
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_MIDDLE): return sPauseEntranceWdwMiddle;
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_HIGH):   return sPauseEntranceWdwHigh;
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_STOPPED): return sPauseEntranceTtcStopped;
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_SLOW):    return sPauseEntranceTtcSlow;
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_RANDOM):  return sPauseEntranceTtcRandom;
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_FAST):    return sPauseEntranceTtcFast;
++        case SM64AP_ENTRANCE_ID(LEVEL_THI, 1): return sPaintingThiHuge;
++        case SM64AP_ENTRANCE_ID(LEVEL_THI, 2): return sPaintingThiTiny;
++    }
++
++    switch (entranceKey / 10) {
++        case LEVEL_BOB:    return sPaintingBob;
++        case LEVEL_WF:     return sPaintingWf;
++        case LEVEL_JRB:    return sPaintingJrb;
++        case LEVEL_CCM:    return sPaintingCcm;
++        case LEVEL_BBH:    return sPaintingBbh;
++        case LEVEL_HMC:    return sPaintingHmc;
++        case LEVEL_LLL:    return sPaintingLll;
++        case LEVEL_SSL:    return sPaintingSsl;
++        case LEVEL_DDD:    return sPaintingDdd;
++        case LEVEL_SL:     return sPaintingSl;
++        case LEVEL_WDW:    return sPaintingWdw;
++        case LEVEL_TTM:    return sPaintingTtm;
++        case LEVEL_THI:    return sPaintingThiHuge;
++        case LEVEL_TTC:    return sPaintingTtc;
++        case LEVEL_RR:     return sPaintingRr;
++        case LEVEL_WMOTR:  return sPaintingWmotr;
++        case LEVEL_BITDW:  return sPauseEntranceBitdw;
++        case LEVEL_BITFS:  return sPauseEntranceBitfs;
++        case LEVEL_BITS:   return sPauseEntranceBits;
++        case LEVEL_BOWSER_1: return sPauseEntranceBitdw;
++        case LEVEL_BOWSER_2: return sPauseEntranceBitfs;
++        case LEVEL_BOWSER_3: return sPauseEntranceBits;
++        case LEVEL_VCUTM:  return sPauseEntranceVcutm;
++        case LEVEL_COTMC:  return sPauseViewCotmc;
++        case LEVEL_TOTWC:  return sPauseEntranceTotwc;
++        case LEVEL_PSS:    return sPauseViewPss;
++        case LEVEL_SA:     return sPauseViewSa;
++        case LEVEL_CASTLE:
++        case LEVEL_CASTLE_GROUNDS:
++        case LEVEL_CASTLE_COURTYARD:
++            return sPauseEntranceCastle;
++        default:           return sPauseEntranceUndiscoveredLabel;
++    }
++}
++
++#define PAUSE_SUB_AREA_ENTRANCE_ROWS_DEFINED 1
++#if PAUSE_SUB_AREA_ENTRANCE_ROWS_DEFINED
++// CCM Slide
++static const u8 sSubAreaCcmSlide[] = {
++    ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('M'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_TERMINATOR
++};
++// SL Igloo
++static const u8 sSubAreaSlIgloo[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('G'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_TERMINATOR
++};
++// TTM Slide
++static const u8 sSubAreaTtmSlide[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('M'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_TERMINATOR
++};
++// THI Red Coin Cave
++static const u8 sSubAreaThiRedCave[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('C'), DIALOG_CHAR_TERMINATOR
++};
++// JRB Sunken Ship
++static const u8 sSubAreaJrbShip[] = {
++    ASCII_TO_DIALOG('J'), ASCII_TO_DIALOG('R'), ASCII_TO_DIALOG('B'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('P'), DIALOG_CHAR_TERMINATOR
++};
++// LLL Volcano
++static const u8 sSubAreaLllVolcano[] = {
++    ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('L'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('V'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_TERMINATOR
++};
++/// SSL Pyramid Side
++static const u8 sSubAreaSslPyramidSide[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('E'), DIALOG_CHAR_TERMINATOR
++};
++/// SSL Pyramid Top
++static const u8 sSubAreaSslPyramidTop[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('P'), DIALOG_CHAR_TERMINATOR
++};
++// THI Wiggler
++static const u8 sSubAreaThiWiggler[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('G'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_TERMINATOR
++};
++// BITDW Bowser
++static const u8 sSubAreaBitdwBowser[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('D'),
++    ASCII_TO_DIALOG('W'), DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('B'), DIALOG_CHAR_TERMINATOR
++}; 
++// BITFS Bowser
++static const u8 sSubAreaBitfsBowser[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('F'),
++    ASCII_TO_DIALOG('S'), DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('B'), DIALOG_CHAR_TERMINATOR
++};
++// BITS Bowser
++static const u8 sSubAreaBitsBowser[] = {
++    ASCII_TO_DIALOG('B'), ASCII_TO_DIALOG('I'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('S'),
++    DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('B'), DIALOG_CHAR_TERMINATOR
++};
++// CCM Slide Exit
++static const u8 sSubAreaCcmSlideExit[] = {
++    ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('M'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('X'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_TERMINATOR
++};
++// SL Igloo Exit
++static const u8 sSubAreaSlIglooExit[] = {
++    ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('X'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_TERMINATOR
++};
++// TTM Slide Exit
++static const u8 sSubAreaTtmSlideExit[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('M'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('X'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_TERMINATOR
++};
++// THI Red Coin Cave Exit
++static const u8 sSubAreaThiRedCaveExit[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('I'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('E'), ASCII_TO_DIALOG('X'), ASCII_TO_DIALOG('T'), DIALOG_CHAR_TERMINATOR
++};
++// PSS Fall
++static const u8 sSubAreaPssFall[] = {
++    ASCII_TO_DIALOG('P'), ASCII_TO_DIALOG('S'), ASCII_TO_DIALOG('S'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_TERMINATOR
++};
++// TOTWC Fall
++static const u8 sSubAreaTotwcFall[] = {
++    ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('W'),
++    ASCII_TO_DIALOG('C'), DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('F'), DIALOG_CHAR_TERMINATOR
++};
++// VCUTM Fall
++static const u8 sSubAreaVcutmFall[] = {
++    ASCII_TO_DIALOG('V'), ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('U'), ASCII_TO_DIALOG('T'),
++    ASCII_TO_DIALOG('M'), DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('F'), DIALOG_CHAR_TERMINATOR
++};
++// COTMC Fall
++static const u8 sSubAreaCotmcFall[] = {
++    ASCII_TO_DIALOG('C'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('T'), ASCII_TO_DIALOG('M'),
++    ASCII_TO_DIALOG('C'), DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('F'), DIALOG_CHAR_TERMINATOR
++};
++// DDD Fall
++static const u8 sSubAreaDddFall[] = {
++    ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('D'), ASCII_TO_DIALOG('D'), DIALOG_CHAR_SPACE,
++    ASCII_TO_DIALOG('F'), ASCII_TO_DIALOG('A'), ASCII_TO_DIALOG('L'), DIALOG_CHAR_TERMINATOR
++};
++// WMOTR Fall
++static const u8 sSubAreaWmotrFall[] = {
++    ASCII_TO_DIALOG('W'), ASCII_TO_DIALOG('M'), ASCII_TO_DIALOG('O'), ASCII_TO_DIALOG('T'),
++    ASCII_TO_DIALOG('R'), DIALOG_CHAR_SPACE, ASCII_TO_DIALOG('F'), DIALOG_CHAR_TERMINATOR
++};
++
++
++#define SM64AP_SUBAREA_DEST_KEY(level, area, node) (((level) << 16) | ((area) << 8) | (node))
++
++static const u8 *pause_subarea_dest_label(int destKey) {
++    switch (destKey) {
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_CCM, 2, 0x0A): return sSubAreaCcmSlide;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_SL,  2, 0x0A): return sSubAreaSlIgloo;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_TTM, 2, 0x0A): return sSubAreaTtmSlide;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_THI, 3, 0x0A): return sSubAreaThiRedCave;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_JRB, 2, 0x0A): return sSubAreaJrbShip;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_LLL, 2, 0x0A): return sSubAreaLllVolcano;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_SSL, 2, 0x0A): return sSubAreaSslPyramidSide;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_SSL, 2, 0x14): return sSubAreaSslPyramidTop;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_THI, 3, 0x0B): return sSubAreaThiWiggler;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_BOWSER_1, 1, 0x0A): return sSubAreaBitdwBowser;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_BOWSER_2, 1, 0x0A): return sSubAreaBitfsBowser;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_BOWSER_3, 1, 0x0A): return sSubAreaBitsBowser;
++        // Return/exit destinations back to a course's main area
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_CCM, 1, 0x14): return sSubAreaCcmSlideExit;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_SL,  1, 0x0B): return sSubAreaSlIglooExit;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_TTM, 1, 0x14): return sSubAreaTtmSlideExit;
++        case SM64AP_SUBAREA_DEST_KEY(LEVEL_THI, 1, 0x0B): return sSubAreaThiRedCaveExit;
++    }
++    // Single-area courses, Bowser arenas, and castle-grounds/lobby returns
++    // are already unambiguous at the course level.
++    //
++    // The variant to display isn't in a fixed bit position: per
++    // SM64AP_ApplySubAreaDestination(), WDW/TTC pack their shuffle-able
++    // variant (water height / clock-arm speed) in bits 24-27, since those
++    // aren't physical areas at all - TTC only has one area, and WDW's three
++    // water heights map onto just two areas. Every other multi-destination
++    // course (THI Huge/Tiny) has no such variant field (it reads back as 0
++    // here), and instead differs by physical area, in bits 8-15.
++    int level = (destKey >> 16) & 0xFF;
++    int variantField = (destKey >> 24) & 0x0F;
++    int area = (destKey >> 8) & 0xFF;
++    int variant = ((level == LEVEL_WDW || level == LEVEL_TTC) && variantField != 0)
++        ? variantField
++        : area;
++    return pause_entrance_dest_label(SM64AP_ENTRANCE_ID(level, variant));
++}
++
++// Page 1: fixed castle-hallway/painting entrances. Flat list, no floor
++// grouping - just fills columns top to bottom, left to right (see
++// render_pause_entrances_page_one). WDW and TTC are each split into their
++// shuffle-able variants (SM64AP_ENTRANCE_WDW_*/SM64AP_ENTRANCE_TTC_*)
++// instead of one combined row.
++static const struct PauseEntranceRow sPauseEntranceRows[] = {
++	// Column 1
++    { SM64AP_ENTRANCE_ID(LEVEL_BOB, 1), sPaintingBob },
++    { SM64AP_ENTRANCE_ID(LEVEL_WF, 1),  sPaintingWf },
++    { SM64AP_ENTRANCE_ID(LEVEL_JRB, 1), sPaintingJrb },
++    { SM64AP_ENTRANCE_ID(LEVEL_CCM, 1), sPaintingCcm },
++    { SM64AP_ENTRANCE_ID(LEVEL_BBH, 1), sPaintingBbh },
++    { SM64AP_ENTRANCE_ID(LEVEL_PSS, 1), sPauseViewPss },
++    { SM64AP_ENTRANCE_ID(LEVEL_SA, 1),  sPauseViewSa },
++    { SM64AP_ENTRANCE_ID(LEVEL_TOTWC, 1), sPauseEntranceTotwc },
++    { SM64AP_ENTRANCE_ID(LEVEL_VCUTM, 1), sPauseEntranceVcutm },
++    { SM64AP_ENTRANCE_ID(LEVEL_COTMC, 1), sPauseViewCotmc },
++	// Column 2
++    { SM64AP_ENTRANCE_ID(LEVEL_BITDW, 1), sPauseEntranceBitdw },
++    { SM64AP_ENTRANCE_ID(LEVEL_BITFS, 1), sPauseEntranceBitfs },
++    { SM64AP_ENTRANCE_ID(LEVEL_BITS, 1), sPauseEntranceBits },
++    { SM64AP_ENTRANCE_ID(LEVEL_WMOTR, 1), sPaintingWmotr },
++    { SM64AP_ENTRANCE_ID(LEVEL_HMC, 1), sPaintingHmc },
++    { SM64AP_ENTRANCE_ID(LEVEL_LLL, 1), sPaintingLll },
++    { SM64AP_ENTRANCE_ID(LEVEL_SSL, 1), sPaintingSsl },
++    { SM64AP_ENTRANCE_ID(LEVEL_DDD, 1), sPaintingDdd },
++    { SM64AP_ENTRANCE_ID(LEVEL_SL, 1),  sPaintingSl },
++    { SM64AP_ENTRANCE_ID(LEVEL_TTM, 1), sPaintingTtm },
++	// Column 3
++    { SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_LOW),    sPauseEntranceWdwLow },
++    { SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_MIDDLE), sPauseEntranceWdwMiddle },
++    { SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_HIGH),   sPauseEntranceWdwHigh },
++    { SM64AP_ENTRANCE_ID(LEVEL_THI, 1), sPaintingThiHuge },
++    { SM64AP_ENTRANCE_ID(LEVEL_THI, 2), sPaintingThiTiny },
++    { SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_STOPPED), sPauseEntranceTtcStopped },
++    { SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_SLOW),    sPauseEntranceTtcSlow },
++    { SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_RANDOM),  sPauseEntranceTtcRandom },
++    { SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_FAST),    sPauseEntranceTtcFast },
++    { SM64AP_ENTRANCE_ID(LEVEL_RR, 1),  sPaintingRr },
++};
++
++// Page 2: sub-area entrances (source IDs 1-63, tracked via the separate
++// low/high sub-area discovery bitmask). Flat list, no floor grouping - each
++// is considered locked/undiscovered until found regardless of items held.
++struct PauseSubAreaEntranceRow {
++    s16 sourceId;
++    const u8 *sourceLabel;
++};
++
++
++static const struct PauseSubAreaEntranceRow sPauseSubAreaEntranceRows[] = {
++	// Column 1
++    { 6, sSubAreaJrbShip },
++    { 1, sSubAreaCcmSlide },
++    { 21, sSubAreaCcmSlideExit },
++    { 7, sSubAreaLllVolcano },
++    { 2, sSubAreaSlIgloo },
++    { 22, sSubAreaSlIglooExit },
++    { 8, sSubAreaSslPyramidSide },
++    { 9, sSubAreaSslPyramidTop },
++    { 24, sSubAreaThiRedCaveExit },
++    { 4, sSubAreaThiRedCave },
++    { 10, sSubAreaThiWiggler },
++	// Column 2
++    { 11, sSubAreaBitdwBowser },
++    { 12, sSubAreaBitfsBowser },
++    { 13, sSubAreaBitsBowser },
++    { 3, sSubAreaTtmSlide },
++    { 23, sSubAreaTtmSlideExit },
++    { 31, sSubAreaPssFall },
++    { 32, sSubAreaTotwcFall },
++    { 33, sSubAreaVcutmFall },
++    { 34, sSubAreaCotmcFall },
++    { 35, sSubAreaDddFall },
++    { 36, sSubAreaWmotrFall },
++};
++#endif
++
+ static const struct PauseUnlockView sPauseUnlockViews[] = {
+     { PAUSE_UNLOCK_VIEW_CASTLE, COURSE_NONE, LEVEL_CASTLE, SM64AP_LEVEL_MOVE_AREA_CASTLE, SM64AP_LEVEL_MOVE_AREA_CASTLE, sPauseViewCastle },
+     { PAUSE_UNLOCK_VIEW_COURSE, COURSE_BOB - 1, LEVEL_BOB, SM64AP_LEVEL_MOVE_AREA_BOB, SM64AP_LEVEL_MOVE_AREA_BOB, NULL },
+@@ -2780,6 +3162,7 @@ static const struct PauseUnlockView sPauseUnlockViews[] = {
+     { PAUSE_UNLOCK_VIEW_SECRET, COURSE_COTMC - 1, LEVEL_COTMC, SM64AP_LEVEL_MOVE_AREA_COTMC, PAUSE_COURSE_UNLOCK_AREA_COTMC, sPauseViewCotmc },
+     { PAUSE_UNLOCK_VIEW_SECRET, COURSE_TOTWC - 1, LEVEL_TOTWC, SM64AP_LEVEL_MOVE_AREA_TOTWC, PAUSE_COURSE_UNLOCK_AREA_TOTWC, sPauseViewTotwc },
+     { PAUSE_UNLOCK_VIEW_SECRET, COURSE_WMOTR - 1, LEVEL_WMOTR, SM64AP_LEVEL_MOVE_AREA_WMOTR, PAUSE_COURSE_UNLOCK_AREA_WMOTR, sPauseViewWmotr },
++    { PAUSE_UNLOCK_VIEW_ENTRANCES, COURSE_NONE, LEVEL_NONE, SM64AP_LEVEL_MOVE_AREA_CASTLE, SM64AP_LEVEL_MOVE_AREA_CASTLE, sPauseViewEntrances },
+ };
+ 
+ static const struct PauseMoveUnlock sPauseMoveUnlocks[] = {
+@@ -3288,6 +3671,9 @@ static void render_pause_castle_unlocks(s16 x, s16 y);
+ static void render_pause_level_unlocks(s16 x, s16 y);
+ static void render_pause_upgrades(s16 x, s16 y);
+ 
++static void render_pause_entrances_page_one(s16 x, s16 y);
++static void render_pause_entrances_page_two(s16 x, s16 y);
++
+ static void render_pause_unlock_view_page(s16 viewIndex) {
+     const struct PauseUnlockView *view = pause_unlock_view_at(viewIndex);
+     static const u8 textPageOne[] = { TEXT_PAGE_1 };
+@@ -3323,6 +3709,8 @@ static void render_pause_unlock_view_page(s16 viewIndex) {
+         -8, 140 + contentYOffset,
+         view->type == PAUSE_UNLOCK_VIEW_CASTLE && sPauseUnlockPage == 1 ? sPauseViewLevels
+         : view->type == PAUSE_UNLOCK_VIEW_CASTLE && sPauseUnlockPage == 2 ? sPauseViewUpgrades
++        : view->type == PAUSE_UNLOCK_VIEW_ENTRANCES && sPauseUnlockPage == 0 ? sPauseEntrancesPageOneTitle
++        : view->type == PAUSE_UNLOCK_VIEW_ENTRANCES && sPauseUnlockPage == 1 ? sPauseEntrancesPageTwoTitle
+         : pause_unlock_view_title(view));
+     print_generic_string(
+         266, 140 + contentYOffset,
+@@ -3330,14 +3718,23 @@ static void render_pause_unlock_view_page(s16 viewIndex) {
+         : view->type == PAUSE_UNLOCK_VIEW_CASTLE && sPauseUnlockPage == 1 ? textCastlePageTwo
+         : view->type == PAUSE_UNLOCK_VIEW_CASTLE && sPauseUnlockPage == 2 ? textPageThree
+         : sPauseUnlockPage == 0 ? textPageOne : textPageTwo);
+-    if (sPauseUnlockPage == 0) {
++    if (sPauseUnlockPage == 0 && view->type != PAUSE_UNLOCK_VIEW_ENTRANCES) {
+         render_pause_move_unlocks(-8, 122 + contentYOffset, view->moveArea, view->levelNum);
+         render_pause_sign_unlock(-8, 1 + contentYOffset, 112, view->levelNum);
+     }
+ 
+     gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
+ 
+-    if (sPauseUnlockPage == 1 && view->type == PAUSE_UNLOCK_VIEW_CASTLE) {
++    if (view->type == PAUSE_UNLOCK_VIEW_ENTRANCES) {
++        gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
++        gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
++        if (sPauseUnlockPage == 0) {
++            render_pause_entrances_page_one(-8, 122 + contentYOffset);
++        } else {
++            render_pause_entrances_page_two(-8, 122 + contentYOffset);
++        }
++        gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
++    } else if (sPauseUnlockPage == 1 && view->type == PAUSE_UNLOCK_VIEW_CASTLE) {
+         gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
+         gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
+         render_pause_level_unlocks(74, 122 + contentYOffset);
+@@ -3466,6 +3863,232 @@ static void render_pause_upgrades(s16 x, s16 y) {
+     }
+ }
+ 
++// Draws the ">" separator between a source and destination label. Reuses
++// the same right-pointing triangle display list already used elsewhere in
++// this file as the menu cursor/selection arrow.
++static void render_pause_entrance_arrow(s16 x, s16 y) {
++    create_dl_translation_matrix(MENU_MTX_PUSH, x, y, 0);
++    gSPDisplayList(gDisplayListHead++, dl_draw_triangle);
++    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
++
++    // dl_draw_triangle is designed to be used standalone: it exits by
++    // restoring the lit/opaque/untextured-SHADE 3D pipeline state, which is
++    // correct everywhere else it's used (cursor arrows, cannon reticle),
++    // but wrong here since we're still inside a dl_ia_text_begin/
++    // dl_ia_text_end block with more text left to print. Left uncorrected,
++    // every print_generic_string() call after the first arrow draws with
++    // lighting back on, no texture, and opaque z-buffered blending -
++    // producing the garbled solid-triangle blocks instead of characters.
++    // Undo exactly what its exit code changed, without touching env color
++    // (render_pause_entrance_row relies on that being left alone).
++    gSPClearGeometryMode(gDisplayListHead++, G_LIGHTING);
++    gDPSetCombineMode(gDisplayListHead++, G_CC_FADEA, G_CC_FADEA);
++    gDPSetRenderMode(gDisplayListHead++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
++    gDPSetTextureFilter(gDisplayListHead++, G_TF_POINT);
++}
++
++static void render_pause_entrance_row(s16 x, s16 y, const u8 *sourceLabel, const u8 *destLabel,
++                                       bool discovered, bool locked) {
++    // Fixed offsets don't work here: label widths vary a lot ("SL" is 11px,
++    // "TTC RND" is 43px), so a gap sized for the short ones clips the long
++    // ones. Measure the actual source label and place the arrow/dest text
++    // right after it instead.
++    s16 sourceWidth = get_string_width((u8 *) sourceLabel);
++    s16 arrowX = x + sourceWidth + 4;
++    s16 destX = arrowX + 10;
++
++    if (locked) {
++        gDPSetEnvColor(gDisplayListHead++, 120, 120, 120, gDialogTextAlpha);
++    } else {
++        gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
++    }
++
++    print_generic_string(x, y, sourceLabel);
++    render_pause_entrance_arrow(arrowX, y);
++
++    if (!discovered) {
++        gDPSetEnvColor(gDisplayListHead++, 120, 120, 120, gDialogTextAlpha);
++    }
++    print_generic_string(destX, y, discovered ? destLabel : sPauseEntranceUndiscoveredLabel);
++
++    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
++}
++
++// Every course entrance is gated by that course's own unlock (its painting/
++// key item) *in addition* to whatever gets it checked below (castle key,
++// etc). Bowser levels (BITDW/BITFS/BITS), BBH (SM64AP_HaveBBH()), BITFS
++// (SM64AP_HaveBITFS() - a dedicated flag, not a painting, unlike its
++// basement-neighbor DDD which is), and the secret-star doors that were
++// already checking SM64AP_HavePainting() here aren't COURSE_ constants, so
++// they're left out of this table and keep their existing standalone checks.
++static s16 pause_entrance_course(s16 sourceEntranceId) {
++    switch (sourceEntranceId) {
++        case SM64AP_ENTRANCE_ID(LEVEL_BOB, 1): return COURSE_BOB;
++        case SM64AP_ENTRANCE_ID(LEVEL_WF, 1):  return COURSE_WF;
++        case SM64AP_ENTRANCE_ID(LEVEL_JRB, 1): return COURSE_JRB;
++        case SM64AP_ENTRANCE_ID(LEVEL_CCM, 1): return COURSE_CCM;
++        case SM64AP_ENTRANCE_ID(LEVEL_HMC, 1): return COURSE_HMC;
++        case SM64AP_ENTRANCE_ID(LEVEL_LLL, 1): return COURSE_LLL;
++        case SM64AP_ENTRANCE_ID(LEVEL_SSL, 1): return COURSE_SSL;
++        case SM64AP_ENTRANCE_ID(LEVEL_DDD, 1): return COURSE_DDD;
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_LOW):
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_MIDDLE):
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_HIGH):
++            return COURSE_WDW;
++        case SM64AP_ENTRANCE_ID(LEVEL_SL, 1):  return COURSE_SL;
++        case SM64AP_ENTRANCE_ID(LEVEL_TTM, 1): return COURSE_TTM;
++        case SM64AP_ENTRANCE_ID(LEVEL_THI, 1):
++        case SM64AP_ENTRANCE_ID(LEVEL_THI, 2):
++            return COURSE_THI;
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_STOPPED):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_SLOW):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_RANDOM):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_FAST):
++            return COURSE_TTC;
++        case SM64AP_ENTRANCE_ID(LEVEL_RR, 1):    return COURSE_RR;
++        case SM64AP_ENTRANCE_ID(LEVEL_WMOTR, 1): return COURSE_WMOTR;
++    }
++
++    return COURSE_NONE;
++}
++
++static bool pause_entrance_have_course_unlock(s16 sourceEntranceId, s16 course) {
++    if (course == COURSE_THI) {
++        return SM64AP_HavePaintingForArea(course, sourceEntranceId % 10);
++    }
++    return SM64AP_HavePainting(course);
++}
++
++static bool pause_entrance_locked(s16 sourceEntranceId) {
++    bool locked = false;
++    s16 course = pause_entrance_course(sourceEntranceId);
++
++    if (course != COURSE_NONE) {
++        locked = !pause_entrance_have_course_unlock(sourceEntranceId, course);
++    }
++
++    switch (sourceEntranceId) {
++        case SM64AP_ENTRANCE_ID(LEVEL_BBH, 1):
++            return !SM64AP_HaveBBH();
++
++        case SM64AP_ENTRANCE_ID(LEVEL_BITDW, 1):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_FIRST_FLOOR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_HMC, 1):
++        case SM64AP_ENTRANCE_ID(LEVEL_LLL, 1):
++        case SM64AP_ENTRANCE_ID(LEVEL_SSL, 1):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_BASEMENT);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_DDD, 1):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_BASEMENT_STAR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_BITFS, 1):
++            return !SM64AP_HaveBITFS() || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_BASEMENT_STAR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_LOW):
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_MIDDLE):
++        case SM64AP_ENTRANCE_ID(LEVEL_WDW, SM64AP_ENTRANCE_WDW_HIGH):
++        case SM64AP_ENTRANCE_ID(LEVEL_THI, 1):
++        case SM64AP_ENTRANCE_ID(LEVEL_THI, 2):
++        case SM64AP_ENTRANCE_ID(LEVEL_SL, 1):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTM, 1):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_UPSTAIRS);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_STOPPED):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_SLOW):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_RANDOM):
++        case SM64AP_ENTRANCE_ID(LEVEL_TTC, SM64AP_ENTRANCE_TTC_FAST):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_50_STAR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_RR, 1):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_50_STAR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_WMOTR, 1):
++            return locked || !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_50_STAR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_BITS, 1):
++            return !SM64AP_HaveCastleKey(SM64AP_CASTLE_KEY_70_STAR);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_SA, 1):
++            return !SM64AP_HavePainting(COURSE_SA);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_TOTWC, 1):
++            return !SM64AP_HaveWingCapLight();
++
++        case SM64AP_ENTRANCE_ID(LEVEL_VCUTM, 1):
++            return !SM64AP_HaveVcutmEntrance();
++
++        case SM64AP_ENTRANCE_ID(LEVEL_PSS, 1):
++            return !SM64AP_HavePainting(COURSE_PSS);
++
++        case SM64AP_ENTRANCE_ID(LEVEL_COTMC, 1):
++            return !SM64AP_HavePainting(COURSE_COTMC);
++    }
++
++    // BOB, WF, JRB, CCM: no castle-key gate, just their own course unlock.
++    return locked;
++}
++
++// 3 columns max, 12 rows max per column (matches sPauseEntranceRows' 30
++// entries: rowsPerColumn works out to 10, comfortably under the cap - if
++// entries are ever added beyond 36 total, this will start overflowing a
++// 4th column that doesn't exist, so keep that ceiling in mind).
++static void render_pause_entrances_page_one(s16 x, s16 y) {
++    static const s16 columnOffset[] = { 0, 100, 200 };
++    enum {
++        PAUSE_ENTRANCE_ROW_COUNT = ARRAY_COUNT(sPauseEntranceRows),
++        PAUSE_ENTRANCE_COLUMN_COUNT = 3,
++        PAUSE_ENTRANCE_ROWS_PER_COLUMN =
++            (PAUSE_ENTRANCE_ROW_COUNT + PAUSE_ENTRANCE_COLUMN_COUNT - 1) / PAUSE_ENTRANCE_COLUMN_COUNT,
++    };
++
++    for (u16 i = 0; i < PAUSE_ENTRANCE_ROW_COUNT; i++) {
++        const struct PauseEntranceRow *entrance = &sPauseEntranceRows[i];
++        s16 column = i / PAUSE_ENTRANCE_ROWS_PER_COLUMN;
++        s16 row = i % PAUSE_ENTRANCE_ROWS_PER_COLUMN;
++
++        // Discovered: has the player actually gone through this entrance?
++        // Locked: gated by a key even if the unlock item itself is held.
++        bool discovered = SM64AP_IsEntranceDiscovered(entrance->sourceEntranceId);
++        bool locked = pause_entrance_locked(entrance->sourceEntranceId);
++        int subAreaKey = SM64AP_GetEntranceDestinationSubAreaKey(entrance->sourceEntranceId);
++        const u8 *destLabel = !discovered
++            ? sPauseEntranceUndiscoveredLabel
++            : subAreaKey >= 0
++                ? pause_subarea_dest_label(subAreaKey)
++                : pause_entrance_dest_label(SM64AP_GetEntranceDestinationEntrance(entrance->sourceEntranceId));
++
++        render_pause_entrance_row(x + columnOffset[column], y - row * 11, entrance->sourceLabel, destLabel,
++                                   discovered, locked);
++    }
++}
++
++static void render_pause_entrances_page_two(s16 x, s16 y) {
++    static const u8 textNoItems[] = { TEXT_UNLOCK_NO_ITEMS };
++    static const s16 columnOffset[] = { 0, 150 };
++    enum {
++        PAUSE_SUB_AREA_ROWS_PER_COLUMN = 11,
++    };
++
++#if PAUSE_SUB_AREA_ENTRANCE_ROWS_DEFINED
++    for (u16 i = 0; i < ARRAY_COUNT(sPauseSubAreaEntranceRows); i++) {
++        const struct PauseSubAreaEntranceRow *entrance = &sPauseSubAreaEntranceRows[i];
++        s16 column = i / PAUSE_SUB_AREA_ROWS_PER_COLUMN;
++        s16 row = i % PAUSE_SUB_AREA_ROWS_PER_COLUMN;
++        bool discovered = SM64AP_IsSubAreaEntranceDiscovered(entrance->sourceId);
++        bool locked = !discovered;
++        const u8 *destLabel = discovered
++            ? pause_subarea_dest_label(SM64AP_GetSubAreaEntranceDestinationKey(entrance->sourceId))
++            : sPauseEntranceUndiscoveredLabel;
++
++        render_pause_entrance_row(x + columnOffset[column], y - row * 11, entrance->sourceLabel, destLabel,
++                                   discovered, locked);
++    }
++#else
++    print_generic_string(x, y, textNoItems);
++#endif
++}
++
+ static void handle_pause_unlock_page_scrolling(s8 pageCount) {
+     s8 requestedPage = sPauseUnlockPage;
+ 
+@@ -4120,4 +4743,4 @@ s16 render_menus_and_dialogs() {
+     }
+     gDPNoOpTag(gDisplayListHead++, SM64AP_VISUAL_TAG_BASE | SM64AP_VISUAL_NORMAL);
+     return mode;
+-}
++}
+\ No newline at end of file
+diff --git a/src/game/ingame_menu.h b/src/game/ingame_menu.h
+index fb8570f..87ee563 100644
+--- a/src/game/ingame_menu.h
++++ b/src/game/ingame_menu.h
+@@ -95,6 +95,7 @@ enum DialogSpecialChars {
+     DIALOG_CHAR_PERIOD = 0x6E,
+     DIALOG_CHAR_COMMA = 0x6F,
+     DIALOG_CHAR_SPACE = 0x9E,
++    DIALOG_CHAR_QUESTION_MARK = 0xF4,
+     DIALOG_CHAR_STAR_COUNT = 0xE0, // number of stars
+     DIALOG_CHAR_UMLAUT = 0xE9,
+     DIALOG_CHAR_DAKUTEN = 0xF0,
+diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
+index 25a9a31..f89b14b 100644
+--- a/src/sm64ap.cpp
++++ b/src/sm64ap.cpp
+@@ -273,6 +273,14 @@ static bool sm64_cannon_flags_storage_received = false;
+ static int sm64_coin_scores_storage_received = 0;
+ static u32 sm64_server_save_flags = 0;
+ static u32 sm64_server_cannon_flags = 0;
++static u32 sm64_discovered_entrances_mask = 0;
++static u32 sm64_discovered_subarea_entrances_low = 0;
++static u32 sm64_discovered_subarea_entrances_high = 0;
++static bool sm64_discovered_entrances_storage_received = false;
++static bool sm64_discovered_subarea_entrances_storage_received = false;
++static std::string sm64_discovered_entrances_key;
++static std::string sm64_discovered_subarea_entrances_low_key;
++static std::string sm64_discovered_subarea_entrances_high_key;
+ static int sm64_server_coin_high_scores[COURSE_STAGES_COUNT] = {};
+ static int sm64_title_connection_wait_frames = 0;
+ static void SM64AP_LoadPermanentCoins(const std::string &rawLedger);
+@@ -2798,6 +2806,59 @@ static void SM64AP_DiscoverRandomizedSource(int sourceId) {
+     }
+ }
+ 
++bool SM64AP_IsEntranceDiscovered(int sourceEntrance) {
++    for (int bit = 0; bit < static_cast<int>(ARRAY_COUNT(sm64_shuffled_entrance_ids)); bit++) {
++        if (sm64_shuffled_entrance_ids[bit] == sourceEntrance) {
++            return (sm64_discovered_entrances_mask & (1 << bit)) != 0;
++        }
++    }
++
++    // Entrances that aren't part of the shuffled pool (e.g. fixed vanilla
++    // connections) are always considered "discovered" for display purposes.
++    return true;
++}
++
++bool SM64AP_IsSubAreaEntranceDiscovered(int sourceId) {
++    if (sourceId <= 0 || sourceId >= 64) {
++        return true;
++    }
++
++    const bool high = sourceId >= 32;
++    const int bit = high ? sourceId - 32 : sourceId - 1;
++    return ((high ? sm64_discovered_subarea_entrances_high : sm64_discovered_subarea_entrances_low)
++        & (1 << bit)) != 0;
++}
++
++int SM64AP_GetEntranceDestinationEntrance(int sourceEntrance) {
++    return SM64AP_GetMappedEntrance(sourceEntrance);
++}
++
++int SM64AP_GetEntranceDestinationSubAreaKey(int sourceEntrance) {
++    auto it = map_sub_area_entrances.find(1000 + sourceEntrance);
++    if (it == map_sub_area_entrances.end()) {
++        return -1;
++    }
++    return it->second & 0x0FFFFFFF;
++}
++
++int SM64AP_GetSubAreaEntranceDestinationEntrance(int sourceId) {
++    auto it = map_sub_area_entrances.find(sourceId);
++    if (it == map_sub_area_entrances.end()) {
++        return SM64AP_ENTRANCE_ID(LEVEL_NONE, 0);
++    }
++    int level = (it->second >> 16) & 0xFF;
++    int variant = (it->second >> 24) & 0x0F;
++    return SM64AP_ENTRANCE_ID(level, variant);
++}
++
++int SM64AP_GetSubAreaEntranceDestinationKey(int sourceId) {
++    auto it = map_sub_area_entrances.find(sourceId);
++    if (it == map_sub_area_entrances.end()) {
++        return 0;
++    }
++    return it->second & 0x0FFFFFFF;
++}
++
+ static void SM64AP_SetTTCEntranceVariantSpeed(int variant) {
+     switch (variant) {
+         case SM64AP_ENTRANCE_TTC_STOPPED:
+@@ -4552,6 +4613,14 @@ void SM64AP_SetReplyHandler(AP_SetReply reply) {
+     } else if (reply.key == AP_GetPrivateServerDataPrefix() + "CannonFlags") {
+         sm64_server_cannon_flags = *(int *) reply.value;
+         sm64_cannon_flags_storage_received = true;
++    } else if (reply.key == sm64_discovered_entrances_key) {
++        sm64_discovered_entrances_mask = *(int *) reply.value;
++        sm64_discovered_entrances_storage_received = true;
++    } else if (reply.key == sm64_discovered_subarea_entrances_low_key) {
++        sm64_discovered_subarea_entrances_low = *(int *) reply.value;
++        sm64_discovered_subarea_entrances_storage_received = true;
++    } else if (reply.key == sm64_discovered_subarea_entrances_high_key) {
++        sm64_discovered_subarea_entrances_high = *(int *) reply.value;
+     } else if (reply.key == sm64_permanent_coin_ledger_key) {
+         SM64AP_LoadPermanentCoins(*(std::string *) reply.value);
+         sm64_permanent_coin_storage_received = true;
+@@ -4668,6 +4737,11 @@ void SM64AP_GenericInit() {
+     sm64_pending_coin_completion_checks.clear();
+     sm64_finished_bowser_flags = 0;
+     sm64_finished_bowser_storage_received = false;
++    sm64_discovered_entrances_mask = 0;
++    sm64_discovered_subarea_entrances_low = 0;
++    sm64_discovered_subarea_entrances_high = 0;
++    sm64_discovered_entrances_storage_received = false;
++    sm64_discovered_subarea_entrances_storage_received = false;
+     sm64_moat_storage_received = false;
+     sm64_permanent_coin_storage_received = false;
+     sm64_save_flags_storage_received = false;
+@@ -6655,6 +6729,15 @@ static void SM64AP_InitializeServerStorage() {
+         std::string key = prefix + "CoinHighScore;" + std::to_string(course);
+         integerStorageKeys[key] = AP_DataType::Int;
+     }
++    sm64_discovered_entrances_key = "SM64SpicyFoundEntrances_" + std::to_string(AP_GetPlayerID());
++    sm64_discovered_subarea_entrances_low_key =
++        "SM64SpicyFoundSubAreaEntrancesLow_" + std::to_string(AP_GetPlayerID());
++    sm64_discovered_subarea_entrances_high_key =
++        "SM64SpicyFoundSubAreaEntrancesHigh_" + std::to_string(AP_GetPlayerID());
++    integerStorageKeys[sm64_discovered_entrances_key] = AP_DataType::Int;
++    integerStorageKeys[sm64_discovered_subarea_entrances_low_key] = AP_DataType::Int;
++    integerStorageKeys[sm64_discovered_subarea_entrances_high_key] = AP_DataType::Int;
++
+     AP_SetNotify(integerStorageKeys, false);
+     for (const auto &entry : integerStorageKeys) {
+         SM64AP_SetServerInt(entry.first, "default", 0);
+diff --git a/src/sm64ap.h b/src/sm64ap.h
+index fca699b..2ee41a5 100644
+--- a/src/sm64ap.h
++++ b/src/sm64ap.h
+@@ -540,6 +540,12 @@ AP_EXTERN_C bool SM64AP_HaveProgressiveMips(int);
+ AP_EXTERN_C int SM64AP_MipsSpawnTier(void);
+ AP_EXTERN_C bool SM64AP_HaveWingCapLight();
+ AP_EXTERN_C bool SM64AP_HaveBBH();
++AP_EXTERN_C bool SM64AP_IsEntranceDiscovered(int sourceEntrance);
++AP_EXTERN_C bool SM64AP_IsSubAreaEntranceDiscovered(int sourceId);
++AP_EXTERN_C int SM64AP_GetEntranceDestinationEntrance(int sourceEntrance);
++AP_EXTERN_C int SM64AP_GetEntranceDestinationSubAreaKey(int sourceEntrance);
++AP_EXTERN_C int SM64AP_GetSubAreaEntranceDestinationEntrance(int sourceId);
++AP_EXTERN_C int SM64AP_GetSubAreaEntranceDestinationKey(int sourceId);
+ AP_EXTERN_C bool SM64AP_HaveToads();
+ AP_EXTERN_C bool SM64AP_HaveCastleCannon();
+ AP_EXTERN_C bool SM64AP_HaveWmotrCannon();

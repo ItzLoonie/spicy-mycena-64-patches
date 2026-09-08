@@ -1,5 +1,5 @@
 diff --git a/include/text_options_strings.h.in b/include/text_options_strings.h.in
-index 61e5bce7..03321cc0 100644
+index 50b0e08..cc7be64 100644
 --- a/include/text_options_strings.h.in
 +++ b/include/text_options_strings.h.in
 @@ -58,6 +58,9 @@
@@ -12,7 +12,7 @@ index 61e5bce7..03321cc0 100644
  
  #define TEXT_BIND_A        _("A BUTTON")
  #define TEXT_BIND_B        _("B BUTTON")
-@@ -124,6 +127,9 @@
+@@ -125,6 +128,9 @@
  #define TEXT_OPT_THREEPT   _("Three-point")
  #define TEXT_OPT_APPLY     _("Apply")
  #define TEXT_OPT_RESETWND  _("Reset Window")
@@ -23,7 +23,7 @@ index 61e5bce7..03321cc0 100644
  #define TEXT_BIND_A        _("A Button")
  #define TEXT_BIND_B        _("B Button")
 diff --git a/lib/APCpp/Archipelago.cpp b/lib/APCpp/Archipelago.cpp
-index addb0799..c0b7d721 100644
+index addb079..c0b7d72 100644
 --- a/lib/APCpp/Archipelago.cpp
 +++ b/lib/APCpp/Archipelago.cpp
 @@ -475,6 +475,10 @@ bool AP_IsMessagePending() {
@@ -66,7 +66,7 @@ index addb0799..c0b7d721 100644
                      messageQueue.push_back(msg);
                  }
 diff --git a/lib/APCpp/Archipelago.h b/lib/APCpp/Archipelago.h
-index a9f58c72..568f99bc 100644
+index a9f58c7..568f99b 100644
 --- a/lib/APCpp/Archipelago.h
 +++ b/lib/APCpp/Archipelago.h
 @@ -93,7 +93,12 @@ void AP_DeathLinkSend();
@@ -135,7 +135,7 @@ index a9f58c72..568f99bc 100644
  void AP_Say(std::string);
  
 diff --git a/src/game/area.c b/src/game/area.c
-index 27119e8d..9d0798cf 100644
+index 27119e8..9d0798c 100644
 --- a/src/game/area.c
 +++ b/src/game/area.c
 @@ -22,6 +22,7 @@
@@ -163,7 +163,7 @@ index 27119e8d..9d0798cf 100644
              clear_viewport(D_8032CE78, gWarpTransFBSetColor);
          } else {
 diff --git a/src/game/options_menu.c b/src/game/options_menu.c
-index ced31038..afb44046 100644
+index d22d7de..64e8f9d 100644
 --- a/src/game/options_menu.c
 +++ b/src/game/options_menu.c
 @@ -93,6 +93,9 @@ static const u8 optsVideoStr[][32] = {
@@ -176,7 +176,7 @@ index ced31038..afb44046 100644
  };
  
  static const u8 optsAudioStr[][32] = {
-@@ -278,6 +281,9 @@ static struct Option optsVideo[] = {
+@@ -285,6 +288,9 @@ static struct Option optsVideo[] = {
      DEF_OPT_TOGGLE( optsVideoStr[5], &configWindow.vsync ),
      DEF_OPT_CHOICE( optsVideoStr[1], &configFiltering, filterChoices ),
      DEF_OPT_TOGGLE( optsVideoStr[7], &configHUD ),
@@ -187,7 +187,7 @@ index ced31038..afb44046 100644
      DEF_OPT_BUTTON( optsVideoStr[9], optvideo_apply ),
  };
 diff --git a/src/pc/configfile.c b/src/pc/configfile.c
-index 47c43294..4083d476 100644
+index 47c4329..4083d47 100644
 --- a/src/pc/configfile.c
 +++ b/src/pc/configfile.c
 @@ -50,6 +50,9 @@ ConfigWindow configWindow       = {
@@ -211,7 +211,7 @@ index 47c43294..4083d476 100644
      {.name = "music_volume",         .type = CONFIG_TYPE_UINT, .uintValue = &configMusicVolume},
      {.name = "sfx_volume",           .type = CONFIG_TYPE_UINT, .uintValue = &configSfxVolume},
 diff --git a/src/pc/configfile.h b/src/pc/configfile.h
-index c1a950cd..cb203221 100644
+index c1a950c..cb20322 100644
 --- a/src/pc/configfile.h
 +++ b/src/pc/configfile.h
 @@ -19,6 +19,9 @@ typedef struct {
@@ -225,10 +225,10 @@ index c1a950cd..cb203221 100644
  extern unsigned int configMusicVolume;
  extern unsigned int configSfxVolume;
 diff --git a/src/sm64ap.cpp b/src/sm64ap.cpp
-index 5897a4a0..d8f3b78f 100644
+index 25a9a31..dd97339 100644
 --- a/src/sm64ap.cpp
 +++ b/src/sm64ap.cpp
-@@ -34,6 +34,11 @@ extern "C" {
+@@ -38,6 +38,11 @@ extern "C" {
      void SM64AP_SetMarioCapShirtColor(u8 r, u8 g, u8 b);
      void SM64AP_SetMarioCapGlovesColor(u8 r, u8 g, u8 b);
      void SM64AP_SetMarioCapHairColor(u8 r, u8 g, u8 b);
@@ -240,15 +240,15 @@ index 5897a4a0..d8f3b78f 100644
  }
  
  #include <string>
-@@ -43,6 +48,7 @@ extern "C" {
- #include <bitset>
+@@ -49,6 +54,7 @@ extern "C" {
  #include <set>
+ #include <climits>
  #include <queue>
 +#include <deque>
  #include <cctype>
  #include <utility>
  #include <algorithm>
-@@ -208,6 +214,47 @@ int msg_frame_duration = 90;
+@@ -504,6 +510,47 @@ int msg_frame_duration = 90;
  int cur_msg_frame_duration = msg_frame_duration;
  std::queue<int64_t> delayed_queue;
  
@@ -294,9 +294,9 @@ index 5897a4a0..d8f3b78f 100644
 +static std::deque<SM64AP_SimpleNotifEntry> sm64_simple_notif_entries;
 +
  std::map<int,int> map_entrances;
- std::set<int> course_dest_supported;
- 
-@@ -4341,6 +4388,47 @@ static std::string SM64AP_SerializeUncollectTrapEvent(
+ std::map<int,int> map_sub_area_entrances;
+ static int sm64_castle_return_shuffle_mode = 0;
+@@ -6970,6 +7017,47 @@ static std::string SM64AP_SerializeUncollectTrapEvent(
      return output.str();
  }
  
@@ -344,10 +344,10 @@ index 5897a4a0..d8f3b78f 100644
  static void SM64AP_ApplyUncollectTrapEvent(const SM64APUncollectTrapEvent &event) {
      if (event.source == 0) {
          return;
-@@ -4350,6 +4438,18 @@ static void SM64AP_ApplyUncollectTrapEvent(const SM64APUncollectTrapEvent &event
-     sm64_permanent_coins.erase(key);
-     sm64_permanent_coin_updates.erase(key);
+@@ -6981,6 +7069,18 @@ static void SM64AP_ApplyUncollectTrapEvent(const SM64APUncollectTrapEvent &event
      sm64_uncollected_coin_tombstones.insert(key);
+     sm64_permanent_coin_sources_dirty = true;
+     SM64AP_CheckGlobalCoinCount();
 +
 +    // Enqueue onto the same AP_Message queue ItemSend/ItemRecv use, rather
 +    // than pushing straight onto the Simple notification display stack, so
@@ -363,7 +363,7 @@ index 5897a4a0..d8f3b78f 100644
  }
  
  void SM64AP_UpdatePermanentCoinTrap() {
-@@ -5349,51 +5449,286 @@ bool SM64AP_CanLedgeGrab() {
+@@ -8114,51 +8214,286 @@ bool SM64AP_CanLedgeGrab() {
      return SM64AP_HaveAbilityForCurrentLevel(SM64AP_ID_LEDGEGRAB - SM64AP_ABILITY_OFFSET);
  }
  
@@ -664,21 +664,21 @@ index 5897a4a0..d8f3b78f 100644
 +            rowFromTop++;
 +            SM64AP_DrawWrappedNotifLine(x, y, line, entry.spans);
 +        }
-+    }
+     }
+-    print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(0), 0, playerLine.c_str());
 +
 +    if (pendingMore > 0) {
 +        std::string moreText = std::to_string(pendingMore) + " more";
 +        u8 encoded[64];
 +        SM64AP_EncodeAsciiForDialog(moreText, encoded, sizeof(encoded));
 +        SM64AP_DrawSimpleNotifLine(x, 0, encoded, kMore);
-     }
--    print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(0), 0, playerLine.c_str());
++    }
 +
 +    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
  }
  
  void SM64AP_PrintNext() {
-@@ -5409,18 +5744,83 @@ void SM64AP_PrintNext() {
+@@ -8174,18 +8509,83 @@ void SM64AP_PrintNext() {
          print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(SCREEN_WIDTH / 2) - 10, SCREEN_HEIGHT / 2, "INCOMPATIBLE WITH");
          print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(SCREEN_WIDTH / 2) - 10, SCREEN_HEIGHT / 2 - 20, "MOUE RANDO");
      }
@@ -772,10 +772,10 @@ index 5897a4a0..d8f3b78f 100644
          AP_CountdownMessage* o_msg = static_cast<AP_CountdownMessage*>(msg);
          print_text(GFX_DIMENSIONS_FROM_LEFT_EDGE(0) + SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, std::to_string(o_msg->timer).c_str());
 diff --git a/src/sm64ap.h b/src/sm64ap.h
-index b41b59ce..46ee9a46 100644
+index fca699b..a8fea82 100644
 --- a/src/sm64ap.h
 +++ b/src/sm64ap.h
-@@ -545,6 +545,7 @@ AP_EXTERN_C int SM64AP_LastLocationCheckId();
+@@ -659,6 +659,7 @@ AP_EXTERN_C struct DialogEntry *SM64AP_GetSignDialogEntry(s16, struct DialogEntr
  
  // Print Next Message to Screen
  AP_EXTERN_C void SM64AP_PrintNext();
