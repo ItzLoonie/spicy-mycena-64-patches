@@ -43,6 +43,6 @@ This patch adds three new Sound options which allows you to toggle whether or no
 
 ## Skip Popups
 This patch skips certain popups to make the flow of the game better for an Archipelago.\
-Recommended to use a patch to disable the star spawn cutscene.\
+Recommended to use a patch to disable the star spawn cutscene.
 
 Also removes the need to be near various NPC star triggers, instead making them spawn as soon as Mario would be able to talk to them.
