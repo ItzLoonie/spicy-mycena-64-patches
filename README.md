@@ -29,6 +29,9 @@ This patch makes collecting coins and star secrets easier when flying with the W
 This patch makes the Snowman Lost His Head star easier by removing the need to meet requirements for it to succeed.\
 Instead, it will always succeed.
 
+## Free Bowser Cam
+This patch gets rid of the restricted 8 directional camera in Bowser Stages when using Free Camera under the BETTERCAMERA make flag.
+
 ## Item HUD
 This patch adds a key counter, a move overlay and a global coin counter to the HUD.
 
